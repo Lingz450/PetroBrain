@@ -384,28 +384,32 @@ export function ChatComposer({ onSubmit, disabled, sending, onStop }: ChatCompos
                 />
               </svg>
             </button>
-            <div className="ml-0.5 mr-1 inline-flex overflow-hidden rounded-full border border-neutral-200/80 bg-white p-0.5 dark:border-neutral-700 dark:bg-neutral-900">
-              {THINKING_MODES.map((m) => {
-                const active = thinkingMode === m.key;
-                return (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => setThinkingMode(m.key)}
-                    disabled={disabled}
-                    title={m.title}
-                    aria-pressed={active}
-                    className={
-                      active
-                        ? 'rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
-                        : 'rounded-full px-2.5 py-0.5 text-xs font-medium text-neutral-500 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:text-neutral-100'
-                    }
-                  >
+            <label className="relative ml-0.5 mr-1 inline-flex items-center">
+              <span className="sr-only">Thinking mode</span>
+              <select
+                value={thinkingMode}
+                onChange={(e) => setThinkingMode(e.target.value as ThinkingMode)}
+                disabled={disabled}
+                title={THINKING_MODES.find((m) => m.key === thinkingMode)?.title}
+                className="appearance-none rounded-full border border-neutral-200/80 bg-white py-1 pl-3 pr-7 text-xs font-medium text-neutral-700 transition-all hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-primary-600 dark:hover:bg-primary-900/30 dark:hover:text-primary-300 dark:focus:border-primary-500 dark:focus:ring-primary-800"
+              >
+                {THINKING_MODES.map((m) => (
+                  <option key={m.key} value={m.key}>
                     {m.label}
-                  </button>
-                );
-              })}
-            </div>
+                  </option>
+                ))}
+              </select>
+              <svg
+                aria-hidden
+                width="10"
+                height="10"
+                viewBox="0 0 20 20"
+                fill="none"
+                className="pointer-events-none absolute right-2.5 text-neutral-500 dark:text-neutral-400"
+              >
+                <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </label>
             {QUICK_ACTIONS.map((a) => (
               <button
                 key={a.key}
