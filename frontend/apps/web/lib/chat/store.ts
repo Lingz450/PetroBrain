@@ -35,8 +35,10 @@ export const useChatStore = create<ChatStoreState>()(
       module: 'general',
       assetContext: null,
       apiBaseUrl: typeof window === 'undefined'
-        ? 'http://localhost:8000'
-        : (window as Window & { __PB_API__?: string }).__PB_API__ ?? 'http://localhost:8000',
+        ? (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000')
+        : (window as Window & { __PB_API__?: string }).__PB_API__
+          ?? process.env.NEXT_PUBLIC_API_BASE_URL
+          ?? 'http://localhost:8000',
       hasHydrated: false,
       setToken: (token) => set({ token, principal: decodePrincipal(token) }),
       setModule: (module) => set({ module }),
