@@ -23,13 +23,19 @@ services:
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
+    # Run migrations on startup (idempotent via IF NOT EXISTS) before uvicorn
+    # so a fresh Neon database self-bootstraps without manual psql work.
+    dockerCommand: sh -c "python -m app.db.pg && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PORT
         value: "8000"
 
-      # --- Persistence: fileless mode (data resets on restart). ---
+      # --- Persistence: managed Postgres (Neon) for data that survives
+      #     redeploys. PB_DATABASE_URL is pasted in the Render dashboard. ---
       - key: PB_PERSISTENCE_BACKEND
-        value: local_json
+        value: postgres
+      - key: PB_DATABASE_URL
+        sync: false
 
       # --- App identity ---
       - key: PB_ENVIRONMENT
@@ -87,4 +93,8 @@ services:
       # --- CORS: paste the Vercel domain after the first frontend deploy.
       #     For first deploy, set to '*' so any origin can call the API. ---
       - key: PB_CORS_ALLOW_ORIGINS
+        sync: false
+
+      # --- Founder bootstrap: emails that get platform_admin on signup. ---
+      - key: PB_BOOTSTRAP_PLATFORM_ADMIN_EMAILS
         sync: false
