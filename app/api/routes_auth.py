@@ -113,6 +113,21 @@ def _mint_for(record: dict) -> str:
     )
 
 
+def _resolve_signup_role(email: str) -> str:
+    """Return platform_admin when the email is on the bootstrap allowlist,
+    otherwise the configured default. Used by /auth/signup so the founder
+    (and any other named bootstrappers) can self-serve admin access without
+    a chicken-and-egg admin-invites-admin flow."""
+    settings = get_settings()
+    raw = (settings.bootstrap_platform_admin_emails or "").strip()
+    if not raw:
+        return settings.default_signup_role
+    needles = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    if email.strip().lower() in needles:
+        return "platform_admin"
+    return settings.default_signup_role
+
+
 def _validate_password(plain: str) -> None:
     settings = get_settings()
     if len(plain) < settings.password_min_length:
@@ -131,8 +146,9 @@ async def signup(req: SignupRequest) -> AuthResponse:
     settings = get_settings()
     if not settings.enable_self_signup:
         raise HTTPException(status_code=403, detail="self-serve signup is disabled")
-    if settings.default_signup_role not in VALID_ROLES:
-        raise HTTPException(status_code=500, detail="invalid default signup role")
+    role = _resolve_signup_role(req.email)
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=500, detail="invalid signup role")
 
     _validate_password(req.password)
 
@@ -149,7 +165,7 @@ async def signup(req: SignupRequest) -> AuthResponse:
         record = users.signup(
             tenant_id=tenant_id,
             email=str(req.email),
-            role=settings.default_signup_role,
+            role=role,
             password_hash=hash_password(req.password),
         ).as_dict()
     except ValueError as exc:

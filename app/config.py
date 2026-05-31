@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     default_signup_tenant_id: str = "demo"
     default_signup_tenant_name: str = "Demo tenant"
     default_signup_role: str = "engineer"
+    # Comma-separated list of emails that get auto-promoted to platform_admin
+    # on first signup. Lets the founder bootstrap admin access without having
+    # to edit the user store by hand. Lowercased + stripped before compare.
+    bootstrap_platform_admin_emails: str = ""
     password_min_length: int = 8
 
     # RAG
