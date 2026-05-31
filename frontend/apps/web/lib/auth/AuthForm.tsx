@@ -7,6 +7,7 @@ import { useState, type FormEvent } from 'react';
 import { Logo } from '@petrobrain/ui';
 
 import { useChatStore } from '@/lib/chat/store';
+import { useSettingsStore } from '@/lib/chat/settings';
 
 import { AuthError, signin, signup } from './api';
 
@@ -58,8 +59,10 @@ export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const apiBaseUrl = useChatStore((s) => s.apiBaseUrl);
   const setToken = useChatStore((s) => s.setToken);
+  const setCallMeName = useSettingsStore((s) => s.setCallMeName);
   const copy = COPY[mode];
 
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -68,6 +71,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   function validate(): string | null {
     const cleaned = email.trim();
+    if (mode === 'signup' && !name.trim()) return 'Please enter your name.';
     if (!EMAIL_RE.test(cleaned)) return 'Please enter a valid email address.';
     if (!password) return 'Password is required.';
     if (mode === 'signup') {
@@ -94,6 +98,12 @@ export function AuthForm({ mode }: AuthFormProps) {
         ? await signup(apiBaseUrl, { email: email.trim(), password })
         : await signin(apiBaseUrl, { email: email.trim(), password });
       setToken(res.token);
+      // Capture the signup name in the same settings field the sidebar pill
+      // already prefers over the auto-generated user_id, so the user sees
+      // their name straight after creating the account.
+      if (mode === 'signup' && name.trim()) {
+        setCallMeName(name.trim());
+      }
       router.push('/chat');
     } catch (err) {
       if (err instanceof AuthError) {
@@ -135,6 +145,27 @@ export function AuthForm({ mode }: AuthFormProps) {
           aria-label={copy.title}
           className="space-y-4 rounded-2xl border border-neutral-200/70 bg-white/80 p-6 shadow-brand-md backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-900/70"
         >
+          {mode === 'signup' ? (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="auth-name"
+                className="text-xs font-medium uppercase tracking-wide text-neutral-600 dark:text-neutral-300"
+              >
+                Name
+              </label>
+              <input
+                id="auth-name"
+                type="text"
+                autoComplete="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="What should we call you?"
+                className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-primary-300 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder-neutral-500 dark:hover:border-primary-600 dark:focus:border-primary-500 dark:focus:ring-primary-800"
+              />
+            </div>
+          ) : null}
+
           <div className="space-y-1.5">
             <label
               htmlFor="auth-email"
