@@ -39,6 +39,7 @@ export function ChatClient() {
   const webSearchEnabled = useChatStore((s) => s.webSearchEnabled);
   const forceCanvasNext = useChatStore((s) => s.forceCanvasNext);
   const setForceCanvasNext = useChatStore((s) => s.setForceCanvasNext);
+  const sidebarCollapsed = useChatStore((s) => s.sidebarCollapsed);
 
   const ownerKey = useMemo(() => ownerKeyOf(principal), [principal]);
 
@@ -448,9 +449,13 @@ export function ChatClient() {
   return (
     <div
       className={
-        canvasMessage
-          ? 'grid min-h-screen grid-cols-[15rem_minmax(0,1fr)_minmax(0,1fr)] gap-0'
-          : 'grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] gap-0'
+        sidebarCollapsed
+          ? canvasMessage
+            ? 'grid min-h-screen grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-0'
+            : 'grid min-h-screen grid-cols-[3.5rem_minmax(0,1fr)] gap-0'
+          : canvasMessage
+            ? 'grid min-h-screen grid-cols-[15rem_minmax(0,1fr)_minmax(0,1fr)] gap-0'
+            : 'grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] gap-0'
       }
     >
       <ChatSidebar />

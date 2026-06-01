@@ -21,6 +21,8 @@ interface ChatStoreState {
    * regardless of length. ChatClient resets it once consumed.
    */
   forceCanvasNext: boolean;
+  /** When true, the chat sidebar collapses to a 3.5rem icon-only rail. */
+  sidebarCollapsed: boolean;
   /**
    * False until zustand finishes hydrating from sessionStorage. Used by the
    * top-level chat surface to suppress the "Sign in" gate flash on a reload
@@ -33,6 +35,7 @@ interface ChatStoreState {
   setThinkingMode: (m: ThinkingMode) => void;
   setWebSearchEnabled: (enabled: boolean) => void;
   setForceCanvasNext: (force: boolean) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
 }
 
 /**
@@ -55,6 +58,7 @@ export const useChatStore = create<ChatStoreState>()(
           ?? 'http://localhost:8000',
       webSearchEnabled: true,
       forceCanvasNext: false,
+      sidebarCollapsed: false,
       hasHydrated: false,
       setToken: (token) => set({ token, principal: decodePrincipal(token) }),
       setModule: (module) => set({ module }),
@@ -62,6 +66,7 @@ export const useChatStore = create<ChatStoreState>()(
       setThinkingMode: (thinkingMode) => set({ thinkingMode }),
       setWebSearchEnabled: (webSearchEnabled) => set({ webSearchEnabled }),
       setForceCanvasNext: (forceCanvasNext) => set({ forceCanvasNext }),
+      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
     }),
     {
       name: 'petrobrain-chat',
@@ -87,6 +92,7 @@ export const useChatStore = create<ChatStoreState>()(
         assetContext: s.assetContext,
         thinkingMode: s.thinkingMode,
         webSearchEnabled: s.webSearchEnabled,
+        sidebarCollapsed: s.sidebarCollapsed,
         // forceCanvasNext is intentionally NOT persisted - it's a one-shot
         // intent for the next send; reload should not silently force-open the
         // canvas on the next turn.

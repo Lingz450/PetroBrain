@@ -729,6 +729,8 @@ export function ChatSidebar() {
   const pathname = usePathname();
   const principal = useChatStore((s) => s.principal);
   const setToken = useChatStore((s) => s.setToken);
+  const collapsed = useChatStore((s) => s.sidebarCollapsed);
+  const setCollapsed = useChatStore((s) => s.setSidebarCollapsed);
   const selectConversation = useConversationsStore((s) => s.selectConversation);
   const newConversation = useConversationsStore((s) => s.newConversation);
   const activeProjectId = useProjectsStore((s) => s.activeId);
@@ -747,10 +749,12 @@ export function ChatSidebar() {
     newConversation(ownerKey, validProjectId);
   }
 
+  if (collapsed) return <CollapsedSidebar onExpand={() => setCollapsed(false)} onNewChat={newChat} onSignOut={signOut} />;
+
   return (
     <aside className="flex h-screen min-h-0 flex-col gap-4 border-r border-neutral-200/70 bg-gradient-to-b from-white via-white to-primary-50/40 px-4 py-5 backdrop-blur-sm dark:border-neutral-800/70 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+      <header className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
           <Logo size={32} glow />
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">PetroBrain</span>
@@ -759,18 +763,32 @@ export function ChatSidebar() {
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={newChat}
-          disabled={!principal}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/70 bg-white/80 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 hover:shadow-[0_4px_12px_-4px_rgba(234,88,12,0.30)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-300 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
-          aria-label="New chat"
-          title="New chat"
-        >
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
-            <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/70 bg-white/80 text-neutral-500 transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-400 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
+          >
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 4v12" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={newChat}
+            disabled={!principal}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/70 bg-white/80 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 hover:shadow-[0_4px_12px_-4px_rgba(234,88,12,0.30)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-300 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
+            aria-label="New chat"
+            title="New chat"
+          >
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+              <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <nav className="space-y-0.5">
@@ -814,6 +832,94 @@ export function ChatSidebar() {
           Sign out
         </Button>
       )}
+    </aside>
+  );
+}
+
+function CollapsedSidebar({
+  onExpand,
+  onNewChat,
+  onSignOut,
+}: {
+  onExpand: () => void;
+  onNewChat: () => void;
+  onSignOut: () => void;
+}) {
+  const pathname = usePathname();
+  const principal = useChatStore((s) => s.principal);
+  const initials = principal?.userId.slice(0, 2).toUpperCase() ?? 'PB';
+
+  return (
+    <aside className="flex h-screen min-h-0 flex-col items-center gap-1 border-r border-neutral-200/70 bg-gradient-to-b from-white via-white to-primary-50/40 px-2 py-4 backdrop-blur-sm dark:border-neutral-800/70 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20">
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label="Expand sidebar"
+        title="Expand sidebar"
+        className="flex h-10 w-10 items-center justify-center rounded-xl text-neutral-600 transition-colors hover:bg-white/80 hover:text-primary-700 dark:text-neutral-300 dark:hover:bg-neutral-900/70 dark:hover:text-primary-300"
+      >
+        <Logo size={28} glow />
+      </button>
+
+      <button
+        type="button"
+        onClick={onNewChat}
+        disabled={!principal}
+        aria-label="New chat"
+        title="New chat"
+        className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200/70 bg-white/80 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 hover:shadow-[0_4px_12px_-4px_rgba(234,88,12,0.30)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-300 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
+      >
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+          <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      <nav className="mt-2 flex flex-col gap-1">
+        {NAV.map((item) => {
+          const active = pathname === item.href || (item.href !== '/chat' && pathname?.startsWith(item.href));
+          return (
+            <Link
+              key={item.href}
+              href={{ pathname: item.href, query: { from: 'chat' } }}
+              aria-label={item.label}
+              title={item.label}
+              className={clsx(
+                'flex h-10 w-10 items-center justify-center rounded-xl transition-all',
+                active
+                  ? 'bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-[0_6px_14px_-6px_rgba(234,88,12,0.55)]'
+                  : 'text-neutral-600 hover:bg-white hover:text-primary-700 hover:shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-primary-300',
+              )}
+            >
+              <NavIcon kind={item.icon} />
+            </Link>
+          );
+        })}
+      </nav>
+
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label="Expand sidebar"
+        title="Expand sidebar"
+        className="mt-auto flex h-10 w-10 items-center justify-center rounded-xl text-neutral-500 transition-colors hover:bg-white/80 hover:text-primary-700 dark:text-neutral-400 dark:hover:bg-neutral-900/70 dark:hover:text-primary-300"
+      >
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden>
+          <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M12 4v12" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </button>
+
+      {principal ? (
+        <button
+          type="button"
+          onClick={onSignOut}
+          aria-label={`Signed in as ${principal.userId}. Click to sign out.`}
+          title={`${principal.userId} - sign out`}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-xs font-bold text-white shadow-[0_4px_10px_-3px_rgba(234,88,12,0.5)] transition-transform hover:scale-105"
+        >
+          {initials}
+        </button>
+      ) : null}
     </aside>
   );
 }
