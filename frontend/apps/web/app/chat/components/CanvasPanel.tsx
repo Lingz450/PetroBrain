@@ -37,7 +37,7 @@ export function CanvasPanel({
   return (
     <aside
       aria-label="Canvas: expanded message"
-      className="relative flex h-full min-h-0 flex-col border-l border-neutral-200/60 bg-gradient-to-b from-white via-white to-primary-50/30 dark:border-neutral-800/60 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20"
+      className="relative flex h-screen min-h-0 flex-col overflow-hidden border-l border-neutral-200/60 bg-gradient-to-b from-white via-white to-primary-50/30 dark:border-neutral-800/60 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20"
     >
       <div
         aria-hidden
