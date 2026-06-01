@@ -1,7 +1,7 @@
 """
 Admin document upload + status (A5).
 
-POST /admin/documents     multipart upload (file + metadata JSON), role=admin
+POST /admin/documents     multipart upload (file + metadata JSON), role=admin or platform_admin
 GET  /admin/documents     list ingest jobs for the principal's tenant
 GET  /admin/documents/{ingest_id}  status detail
 
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/admin/documents", tags=["admin", "documents"])
 audit_logger = get_audit_logger()
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB; tighten per tenant later
-_admin_only = require_role("admin")
+_admin_only = require_role("admin", "platform_admin")
 
 
 @router.post("")

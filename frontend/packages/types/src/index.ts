@@ -9,7 +9,7 @@
  * chat UI - i.e. things the OpenAPI client can't express directly.
  */
 
-export type Role = 'admin' | 'engineer' | 'field' | 'hse';
+export type Role = 'platform_admin' | 'admin' | 'engineer' | 'field' | 'hse';
 
 export type Module = 'general' | 'well_control' | 'emissions_mrv';
 

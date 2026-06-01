@@ -34,7 +34,13 @@ function stringClaim(obj: unknown, key: string): string | null {
 }
 
 function isRole(value: string | null): value is Role {
-  return value === 'admin' || value === 'engineer' || value === 'field' || value === 'hse';
+  return (
+    value === 'platform_admin'
+    || value === 'admin'
+    || value === 'engineer'
+    || value === 'field'
+    || value === 'hse'
+  );
 }
 
 function b64urlDecode(s: string): string {

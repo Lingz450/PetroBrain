@@ -6,7 +6,7 @@ import { useChatStore } from '@/lib/chat/store';
 import { EmissionsScreen } from './components/EmissionsScreen';
 import { RoleForbidden } from './components/RoleForbidden';
 
-const ALLOWED_ROLES = new Set(['admin', 'engineer', 'hse']);
+const ALLOWED_ROLES = new Set(['platform_admin', 'admin', 'engineer', 'hse']);
 
 export function EmissionsClient() {
   const token = useChatStore((s) => s.token);

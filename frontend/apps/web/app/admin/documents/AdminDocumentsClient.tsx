@@ -28,6 +28,8 @@ export function AdminDocumentsClient() {
     );
   }
   if (!token || !principal) return <AuthGate />;
-  if (principal.role !== 'admin') return <Forbidden role={principal.role} />;
+  if (principal.role !== 'admin' && principal.role !== 'platform_admin') {
+    return <Forbidden role={principal.role} />;
+  }
   return <DocumentsScreen />;
 }
