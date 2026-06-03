@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { Logo } from '@petrobrain/ui';
 
@@ -68,6 +68,16 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Surfaces "waking the backend..." after a few seconds of busy so the user
+  // knows we're not silently hung on a Render cold start.
+  const [slow, setSlow] = useState(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    };
+  }, []);
 
   function validate(): string | null {
     const cleaned = email.trim();
@@ -93,10 +103,17 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
     setError(null);
     setBusy(true);
+    setSlow(false);
+    // Cold-start guard: tell the user we're waking the backend after a short
+    // delay, and hard-abort the request after 60 seconds so the form can never
+    // sit on "Signing in..." indefinitely.
+    slowTimerRef.current = setTimeout(() => setSlow(true), 6000);
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 60_000);
     try {
       const res = mode === 'signup'
-        ? await signup(apiBaseUrl, { email: email.trim(), password })
-        : await signin(apiBaseUrl, { email: email.trim(), password });
+        ? await signup(apiBaseUrl, { email: email.trim(), password }, controller.signal)
+        : await signin(apiBaseUrl, { email: email.trim(), password }, controller.signal);
       setToken(res.token);
       // Capture the signup name in the same settings field the sidebar pill
       // already prefers over the auto-generated user_id, so the user sees
@@ -108,10 +125,19 @@ export function AuthForm({ mode }: AuthFormProps) {
     } catch (err) {
       if (err instanceof AuthError) {
         setError(err.message);
+      } else if ((err as { name?: string }).name === 'AbortError') {
+        setError("The backend didn't respond in 60 seconds. It may be waking up - wait a moment and try again.");
       } else {
         setError('Could not reach the backend. Check your connection and try again.');
       }
       setBusy(false);
+      setSlow(false);
+    } finally {
+      clearTimeout(abortTimer);
+      if (slowTimerRef.current) {
+        clearTimeout(slowTimerRef.current);
+        slowTimerRef.current = null;
+      }
     }
   }
 
@@ -242,6 +268,16 @@ export function AuthForm({ mode }: AuthFormProps) {
           >
             {busy ? copy.busy : copy.submit}
           </button>
+
+          {busy && slow ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-center text-[11px] text-neutral-500 dark:text-neutral-400"
+            >
+              Waking the backend - first request after idle can take ~30 seconds.
+            </p>
+          ) : null}
 
           <p className="text-center text-xs text-neutral-500 dark:text-neutral-400">
             {copy.switchPrompt}{' '}
