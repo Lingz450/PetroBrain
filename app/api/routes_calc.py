@@ -78,33 +78,43 @@ async def run_calc(req: CalcRequest, who: Principal = Depends(get_principal)):
         "result": result.as_dict(),
     }
 
-    audit_logger.write(AuditEvent(
-        event_type="calc_run",
-        tenant_id=who.tenant_id,
-        user_id=who.user_id,
-        role=who.role,
-        route="/calc",
-        request=req.model_dump(),
-        response={"result_unit": result.unit, "result_value": round(result.result, 4)},
-        flags=[],
-        tool_results=[{"tool": f"calc:{spec.name}", "result": result.as_dict()}],
-        metadata={
-            "family": spec.family,
-            "safety_critical": result.safety_critical,
-        },
-    ))
-    # Production-shape audit_events row (hash only - keeps PII out of the
-    # audit store; same contract as the chat/tool path).
-    get_audit_events_repository().append(
-        tenant_id=who.tenant_id,
-        user_id=who.user_id,
-        role=who.role,
-        action=f"calc:{spec.name}",
-        module="calc",
-        request_hash=sha256_canonical(req.model_dump()),
-        response_hash=sha256_canonical(response),
-        flags=[],
-    )
+    # Audit is a best-effort side-effect: a computed, validated result must never be lost
+    # because the audit sink is unavailable (e.g. free-tier read-only FS, or a missing
+    # audit_events table / RLS on the managed DB). Failures are swallowed here; the result
+    # still returns. (Durable audit needs the audit_events migration applied — see notes.)
+    try:
+        audit_logger.write(AuditEvent(
+            event_type="calc_run",
+            tenant_id=who.tenant_id,
+            user_id=who.user_id,
+            role=who.role,
+            route="/calc",
+            request=req.model_dump(),
+            response={"result_unit": result.unit, "result_value": round(result.result, 4)},
+            flags=[],
+            tool_results=[{"tool": f"calc:{spec.name}", "result": result.as_dict()}],
+            metadata={
+                "family": spec.family,
+                "safety_critical": result.safety_critical,
+            },
+        ))
+    except Exception:  # noqa: BLE001 - audit must not fail the calc
+        pass
+    try:
+        # Production-shape audit_events row (hash only - keeps PII out of the
+        # audit store; same contract as the chat/tool path).
+        get_audit_events_repository().append(
+            tenant_id=who.tenant_id,
+            user_id=who.user_id,
+            role=who.role,
+            action=f"calc:{spec.name}",
+            module="calc",
+            request_hash=sha256_canonical(req.model_dump()),
+            response_hash=sha256_canonical(response),
+            flags=[],
+        )
+    except Exception:  # noqa: BLE001 - audit must not fail the calc
+        pass
     return response
 
 
