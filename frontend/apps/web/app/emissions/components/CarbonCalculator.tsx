@@ -149,24 +149,24 @@ export function CarbonCalculator() {
             <SummaryPill label="Total emissions" value={`${formatNumber(summaryTotal)} kgCO2`} />
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-neutral-200 dark:border-neutral-800">
-            <table className="min-w-full divide-y divide-neutral-200 text-sm dark:divide-neutral-800">
-              <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900/60 dark:text-neutral-400">
+          <div className="overflow-x-auto rounded-md border border-neutral-300 shadow-[inset_0_0_0_1px_rgba(212,212,212,0.7)] dark:border-neutral-700 dark:shadow-[inset_0_0_0_1px_rgba(64,64,64,0.8)]">
+            <table className="min-w-full border-collapse text-sm">
+              <thead className="bg-neutral-100 text-xs uppercase tracking-wide text-neutral-600 dark:bg-neutral-800/80 dark:text-neutral-300">
                 <tr>
-                  <th scope="col" className="px-3 py-2 text-left">Source</th>
-                  <th scope="col" className="px-3 py-2 text-left">Activity data</th>
-                  <th scope="col" className="px-3 py-2 text-left">Unit</th>
-                  <th scope="col" className="px-3 py-2 text-right">Emission factor</th>
-                  <th scope="col" className="px-3 py-2 text-right">Total emissions</th>
+                  <th scope="col" className="border border-neutral-300 px-3 py-2 text-left dark:border-neutral-700">Source</th>
+                  <th scope="col" className="border border-neutral-300 px-3 py-2 text-left dark:border-neutral-700">Activity data</th>
+                  <th scope="col" className="border border-neutral-300 px-3 py-2 text-left dark:border-neutral-700">Unit</th>
+                  <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">Emission factor</th>
+                  <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">Total emissions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100 bg-white dark:divide-neutral-800 dark:bg-neutral-900/60">
+              <tbody className="bg-white dark:bg-neutral-900/60">
                 {summaryRows.map((row) => {
                   const total = activity(row.activity) * row.factor;
                   return (
                     <tr key={row.id}>
-                      <td className="px-3 py-2 font-medium text-neutral-800 dark:text-neutral-100">{row.source}</td>
-                      <td className="min-w-40 px-3 py-2">
+                      <td className="border border-neutral-300 px-3 py-2 font-medium text-neutral-800 dark:border-neutral-700 dark:text-neutral-100">{row.source}</td>
+                      <td className="min-w-40 border border-neutral-300 px-3 py-2 dark:border-neutral-700">
                         <input
                           aria-label={`${row.source} activity data`}
                           type="number"
@@ -174,23 +174,23 @@ export function CarbonCalculator() {
                           step="any"
                           value={row.activity}
                           onChange={(e) => updateSummary(row.id, e.target.value)}
-                          className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-primary-800"
+                          className={inputClassName}
                         />
                       </td>
-                      <td className="px-3 py-2 text-neutral-600 dark:text-neutral-300">{row.unit}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-neutral-800 dark:text-neutral-200">
+                      <td className="border border-neutral-300 px-3 py-2 text-neutral-600 dark:border-neutral-700 dark:text-neutral-300">{row.unit}</td>
+                      <td className="border border-neutral-300 px-3 py-2 text-right tabular-nums text-neutral-800 dark:border-neutral-700 dark:text-neutral-200">
                         {formatNumber(row.factor)}
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">
+                      <td className="border border-neutral-300 px-3 py-2 text-right font-semibold tabular-nums text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">
                         {formatNumber(total)}
                       </td>
                     </tr>
                   );
                 })}
-                <tr className="bg-neutral-50 font-semibold dark:bg-neutral-900">
-                  <td className="px-3 py-2 text-neutral-900 dark:text-neutral-100">Total emissions</td>
-                  <td className="px-3 py-2" colSpan={3} />
-                  <td className="px-3 py-2 text-right tabular-nums text-neutral-900 dark:text-neutral-100">
+                <tr className="bg-neutral-100 font-semibold dark:bg-neutral-800/80">
+                  <td className="border border-neutral-300 px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">Total emissions</td>
+                  <td className="border border-neutral-300 px-3 py-2 dark:border-neutral-700" colSpan={3} />
+                  <td className="border border-neutral-300 px-3 py-2 text-right tabular-nums text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">
                     {formatNumber(summaryTotal)}
                   </td>
                 </tr>
@@ -273,38 +273,38 @@ function BreakdownTable({
         <SummaryPill label={`${config.title} total`} value={`${formatNumber(totals.emissions)} kgCO2`} />
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-neutral-200 dark:border-neutral-800">
-        <table className="min-w-full divide-y divide-neutral-200 text-sm dark:divide-neutral-800">
-          <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900/60 dark:text-neutral-400">
+      <div className="overflow-x-auto rounded-md border border-neutral-300 shadow-[inset_0_0_0_1px_rgba(212,212,212,0.7)] dark:border-neutral-700 dark:shadow-[inset_0_0_0_1px_rgba(64,64,64,0.8)]">
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="bg-neutral-100 text-xs uppercase tracking-wide text-neutral-600 dark:bg-neutral-800/80 dark:text-neutral-300">
             <tr>
-              <th scope="col" className="px-3 py-2 text-left">Source</th>
-              <th scope="col" className="px-3 py-2 text-left">Month</th>
+              <th scope="col" className="border border-neutral-300 px-3 py-2 text-left dark:border-neutral-700">Source</th>
+              <th scope="col" className="border border-neutral-300 px-3 py-2 text-left dark:border-neutral-700">Month</th>
               {isSpendMode ? (
                 <>
-                  <th scope="col" className="px-3 py-2 text-right">Amount</th>
-                  <th scope="col" className="px-3 py-2 text-right">Unit price</th>
+                  <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">Amount</th>
+                  <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">Unit price</th>
                 </>
               ) : (
-                <th scope="col" className="px-3 py-2 text-right">Activity data</th>
+                <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">Activity data</th>
               )}
-              <th scope="col" className="px-3 py-2 text-right">Total {config.unit.toLowerCase()}</th>
-              <th scope="col" className="px-3 py-2 text-right">Emission factor</th>
-              <th scope="col" className="px-3 py-2 text-right">CO2 emissions</th>
+              <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">Total {config.unit.toLowerCase()}</th>
+              <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">Emission factor</th>
+              <th scope="col" className="border border-neutral-300 px-3 py-2 text-right dark:border-neutral-700">CO2 emissions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-100 bg-white dark:divide-neutral-800 dark:bg-neutral-900/60">
+          <tbody className="bg-white dark:bg-neutral-900/60">
             {rows.map((row, index) => {
               const activityValue = rowActivity(config, row);
               const emissions = activityValue * config.factor;
               return (
                 <tr key={row.id}>
-                  <td className="px-3 py-2 font-medium text-neutral-800 dark:text-neutral-100">
+                  <td className="border border-neutral-300 px-3 py-2 font-medium text-neutral-800 dark:border-neutral-700 dark:text-neutral-100">
                     {index === 0 ? config.source : ''}
                   </td>
-                  <td className="px-3 py-2 text-neutral-700 dark:text-neutral-300">{row.month}</td>
+                  <td className="border border-neutral-300 px-3 py-2 text-neutral-700 dark:border-neutral-700 dark:text-neutral-300">{row.month}</td>
                   {isSpendMode ? (
                     <>
-                      <td className="min-w-36 px-3 py-2">
+                      <td className="min-w-36 border border-neutral-300 px-3 py-2 dark:border-neutral-700">
                         <NumberCell
                           label={`${config.title} ${row.month} amount`}
                           value={row.amount}
@@ -312,7 +312,7 @@ function BreakdownTable({
                           onChange={(value) => onChange(row.id, { amount: value })}
                         />
                       </td>
-                      <td className="min-w-32 px-3 py-2">
+                      <td className="min-w-32 border border-neutral-300 px-3 py-2 dark:border-neutral-700">
                         <NumberCell
                           label={`${config.title} ${row.month} unit price`}
                           value={row.unitPrice}
@@ -322,7 +322,7 @@ function BreakdownTable({
                       </td>
                     </>
                   ) : (
-                    <td className="min-w-36 px-3 py-2">
+                    <td className="min-w-36 border border-neutral-300 px-3 py-2 dark:border-neutral-700">
                       <NumberCell
                         label={`${config.title} ${row.month} activity data`}
                         value={row.activity}
@@ -331,31 +331,31 @@ function BreakdownTable({
                       />
                     </td>
                   )}
-                  <td className="px-3 py-2 text-right tabular-nums text-neutral-800 dark:text-neutral-200">
+                  <td className="border border-neutral-300 px-3 py-2 text-right tabular-nums text-neutral-800 dark:border-neutral-700 dark:text-neutral-200">
                     {formatNumber(activityValue)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-neutral-800 dark:text-neutral-200">
+                  <td className="border border-neutral-300 px-3 py-2 text-right tabular-nums text-neutral-800 dark:border-neutral-700 dark:text-neutral-200">
                     {formatNumber(config.factor)}
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">
+                  <td className="border border-neutral-300 px-3 py-2 text-right font-semibold tabular-nums text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">
                     {formatNumber(emissions)}
                   </td>
                 </tr>
               );
             })}
-            <tr className="bg-neutral-50 font-semibold dark:bg-neutral-900">
-              <td className="px-3 py-2 text-neutral-900 dark:text-neutral-100" colSpan={2}>Quarter total</td>
+            <tr className="bg-neutral-100 font-semibold dark:bg-neutral-800/80">
+              <td className="border border-neutral-300 px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:text-neutral-100" colSpan={2}>Quarter total</td>
               {isSpendMode ? (
-                <td className="px-3 py-2 text-right tabular-nums text-neutral-900 dark:text-neutral-100">
+                <td className="border border-neutral-300 px-3 py-2 text-right tabular-nums text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">
                   {formatNumber(totals.amount)}
                 </td>
               ) : null}
-              <td className="px-3 py-2" />
-              <td className="px-3 py-2 text-right tabular-nums text-neutral-900 dark:text-neutral-100">
+              <td className="border border-neutral-300 px-3 py-2 dark:border-neutral-700" />
+              <td className="border border-neutral-300 px-3 py-2 text-right tabular-nums text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">
                 {formatNumber(totals.activity)}
               </td>
-              <td className="px-3 py-2" />
-              <td className="px-3 py-2 text-right tabular-nums text-neutral-900 dark:text-neutral-100">
+              <td className="border border-neutral-300 px-3 py-2 dark:border-neutral-700" />
+              <td className="border border-neutral-300 px-3 py-2 text-right tabular-nums text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">
                 {formatNumber(totals.emissions)}
               </td>
             </tr>
@@ -385,10 +385,13 @@ function NumberCell({
       step="any"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-right text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-primary-800"
+      className={inputClassName}
     />
   );
 }
+
+const inputClassName =
+  'h-9 w-full rounded-md border border-neutral-300 bg-white px-2.5 text-right text-sm text-neutral-900 shadow-[inset_0_0_0_1px_rgba(229,229,229,0.8)] focus:outline-none focus:ring-2 focus:ring-primary-200 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:shadow-[inset_0_0_0_1px_rgba(82,82,82,0.8)] dark:focus:ring-primary-800';
 
 function SummaryPill({ label, value }: { label: string; value: string }) {
   return (
