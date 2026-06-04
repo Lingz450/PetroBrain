@@ -4,7 +4,14 @@
  */
 import type {
   AuditEventRow,
+  ChunkWeightRow,
   DataReadiness,
+  FeedbackRating,
+  FeedbackRow,
+  FeedbackSummary,
+  MemoryKind,
+  MemoryRow,
+  MemoryStatus,
   TenantRow,
   TenantStatus,
   UserRole,
@@ -171,4 +178,134 @@ export async function queryAudit(opts: ReqOpts & AuditQuery): Promise<AuditResul
   if (opts.limit != null) url.searchParams.set('limit', String(opts.limit));
   if (opts.offset != null) url.searchParams.set('offset', String(opts.offset));
   return json<AuditResult>(await fetch(url, init(opts)));
+}
+
+// ---- Learning loop: feedback / memory / chunk weights -------------------
+
+export interface FeedbackResult {
+  feedback: FeedbackRow[];
+  tenant_id: string;
+  limit: number;
+  offset: number;
+}
+
+export async function listFeedback(
+  opts: ReqOpts & {
+    tenantId?: string;
+    rating?: FeedbackRating;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<FeedbackResult> {
+  const url = new URL('/admin/feedback', opts.baseUrl);
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  if (opts.rating) url.searchParams.set('rating', opts.rating);
+  if (opts.limit != null) url.searchParams.set('limit', String(opts.limit));
+  if (opts.offset != null) url.searchParams.set('offset', String(opts.offset));
+  return json<FeedbackResult>(await fetch(url, init(opts)));
+}
+
+export async function getFeedbackSummary(
+  opts: ReqOpts & { tenantId?: string },
+): Promise<FeedbackSummary> {
+  const url = new URL('/admin/feedback/summary', opts.baseUrl);
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  return json<FeedbackSummary>(await fetch(url, init(opts)));
+}
+
+export interface MemoryResult {
+  memories: MemoryRow[];
+  tenant_id: string;
+  limit: number;
+  offset: number;
+}
+
+export async function listMemory(
+  opts: ReqOpts & {
+    tenantId?: string;
+    status?: MemoryStatus | null;
+    kind?: MemoryKind;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<MemoryResult> {
+  const url = new URL('/admin/memory', opts.baseUrl);
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  if (opts.status !== undefined && opts.status !== null)
+    url.searchParams.set('status', opts.status);
+  if (opts.kind) url.searchParams.set('kind', opts.kind);
+  if (opts.limit != null) url.searchParams.set('limit', String(opts.limit));
+  if (opts.offset != null) url.searchParams.set('offset', String(opts.offset));
+  return json<MemoryResult>(await fetch(url, init(opts)));
+}
+
+export async function createMemory(
+  opts: ReqOpts & {
+    tenantId?: string;
+    body: string;
+    kind: MemoryKind;
+  },
+): Promise<MemoryRow> {
+  const url = new URL('/admin/memory', opts.baseUrl);
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  const reqBody = JSON.stringify({ body: opts.body, kind: opts.kind });
+  return json<MemoryRow>(
+    await fetch(url, init(opts, { method: 'POST', body: reqBody })),
+  );
+}
+
+export async function updateMemory(
+  opts: ReqOpts & {
+    tenantId?: string;
+    memoryId: string;
+    body?: string;
+    kind?: MemoryKind;
+    status?: MemoryStatus;
+  },
+): Promise<MemoryRow> {
+  const url = new URL(`/admin/memory/${opts.memoryId}`, opts.baseUrl);
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  const patch: Record<string, unknown> = {};
+  if (opts.body !== undefined) patch.body = opts.body;
+  if (opts.kind !== undefined) patch.kind = opts.kind;
+  if (opts.status !== undefined) patch.status = opts.status;
+  return json<MemoryRow>(
+    await fetch(url, init(opts, { method: 'PATCH', body: JSON.stringify(patch) })),
+  );
+}
+
+export async function promoteFeedbackToMemory(
+  opts: ReqOpts & {
+    tenantId?: string;
+    feedbackId: string;
+    body: string;
+    kind: MemoryKind;
+  },
+): Promise<MemoryRow> {
+  const url = new URL(
+    `/admin/memory/from-feedback/${opts.feedbackId}`,
+    opts.baseUrl,
+  );
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  const reqBody = JSON.stringify({ body: opts.body, kind: opts.kind });
+  return json<MemoryRow>(
+    await fetch(url, init(opts, { method: 'POST', body: reqBody })),
+  );
+}
+
+export interface ChunkWeightsResult {
+  weights: ChunkWeightRow[];
+  tenant_id: string;
+  limit: number;
+  offset: number;
+}
+
+export async function listChunkWeights(
+  opts: ReqOpts & { tenantId?: string; limit?: number; offset?: number },
+): Promise<ChunkWeightsResult> {
+  const url = new URL('/admin/chunk-weights', opts.baseUrl);
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  if (opts.limit != null) url.searchParams.set('limit', String(opts.limit));
+  if (opts.offset != null) url.searchParams.set('offset', String(opts.offset));
+  return json<ChunkWeightsResult>(await fetch(url, init(opts)));
 }

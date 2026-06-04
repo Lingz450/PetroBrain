@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     routes_admin_audit,
+    routes_admin_chunk_weights,
     routes_admin_data_readiness,
     routes_admin_documents,
     routes_admin_feedback,
@@ -101,6 +102,7 @@ app.include_router(routes_admin_data_readiness.router)
 app.include_router(routes_admin_permits.router)
 app.include_router(routes_admin_feedback.router)
 app.include_router(routes_admin_memory.router)
+app.include_router(routes_admin_chunk_weights.router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

@@ -52,6 +52,11 @@ function TenantAdminLanding({ tenantId }: { tenantId: string }) {
           title="Audit log"
           description="Hash-only audit_events review."
         />
+        <NavCard
+          href={`/tenants/${tenantId}/learning` as Route}
+          title="Learning"
+          description="Feedback stream, prompt memory, retrieval weights."
+        />
       </div>
     </AdminShell>
   );

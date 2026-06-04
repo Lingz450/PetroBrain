@@ -216,3 +216,56 @@ def test_safety_floor_keeps_chunk_in_retrieval(weights_repo):
     assert {h["id"] for h in out} == {100, 200}
     floored = next(h for h in out if h["id"] == 100)
     assert floored["tenant_weight"] == pytest.approx(0.5, abs=1e-9)
+
+
+# ---- admin read endpoint ------------------------------------------------
+
+def test_admin_chunk_weights_route_role_gated(weights_repo, monkeypatch):
+    """The admin Learning page reads from GET /admin/chunk-weights; the
+    endpoint must reject non-admin roles and respect tenant isolation."""
+    from fastapi.testclient import TestClient
+    from app.api import deps, routes_admin_chunk_weights
+    from app.main import app
+    from tests.auth_helpers import auth_headers, jwt_settings
+
+    monkeypatch.setattr(deps, "get_settings", jwt_settings)
+    # The admin route captured get_chunk_weights_repository at import time;
+    # the autouse fixture only patched the source module, so the route still
+    # binds to the real one. Rebind the route's own reference here.
+    monkeypatch.setattr(
+        routes_admin_chunk_weights, "get_chunk_weights_repository",
+        lambda: weights_repo,
+    )
+    client = TestClient(app)
+
+    # Seed a weight under tenant t1.
+    settings = get_settings()
+    weights_repo.bump(
+        tenant_id="t1", chunk_id=42,
+        multiplier=settings.chunk_weight_down_step, rating="down",
+    )
+
+    # Engineer cannot read.
+    r = client.get(
+        "/admin/chunk-weights",
+        headers=auth_headers(tenant_id="t1", role="engineer"),
+    )
+    assert r.status_code == 403
+
+    # Tenant admin can read their own tenant.
+    r = client.get(
+        "/admin/chunk-weights",
+        headers=auth_headers(tenant_id="t1", role="admin"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tenant_id"] == "t1"
+    assert len(body["weights"]) == 1
+    assert body["weights"][0]["chunk_id"] == 42
+
+    # Tenant admin cannot read another tenant.
+    r = client.get(
+        "/admin/chunk-weights?tenant_id=other",
+        headers=auth_headers(tenant_id="t1", role="admin"),
+    )
+    assert r.status_code == 403

@@ -57,3 +57,54 @@ export interface AuditEventRow {
   flags: string[];
   usage: Record<string, unknown>;
 }
+
+// ---- Learning loop (feedback, memory, retrieval weights) ----------------
+
+export type FeedbackRating = 'up' | 'down';
+
+export interface FeedbackRow {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  turn_id: string;
+  rating: FeedbackRating;
+  reason: string | null;
+  module: string | null;
+  metadata: Record<string, unknown>;
+  created_utc: string;
+}
+
+export interface FeedbackSummary {
+  tenant_id: string;
+  up: number;
+  down: number;
+  total: number;
+}
+
+export type MemoryKind = 'terminology' | 'preference' | 'context';
+export type MemoryStatus = 'active' | 'archived';
+export type MemorySource = 'manual' | 'promoted_feedback';
+
+export const MEMORY_KINDS: MemoryKind[] = ['terminology', 'preference', 'context'];
+
+export interface MemoryRow {
+  id: string;
+  tenant_id: string;
+  kind: MemoryKind;
+  body: string;
+  source: MemorySource;
+  source_feedback_id: string | null;
+  status: MemoryStatus;
+  created_by: string;
+  created_utc: string;
+  updated_utc: string;
+}
+
+export interface ChunkWeightRow {
+  tenant_id: string;
+  chunk_id: number;
+  weight: number;
+  up_count: number;
+  down_count: number;
+  last_updated: string;
+}
