@@ -12,8 +12,19 @@ output "db_url_secret_arn" {
   value       = module.data.db_url_secret_arn
 }
 
-output "redis_url" {
-  value = module.data.redis_url
+output "redis_url_secret_arn" {
+  description = "Secrets Manager ARN of PB_REDIS_URL."
+  value       = module.data.redis_url_secret_arn
+}
+
+output "celery_broker_url_secret_arn" {
+  description = "Secrets Manager ARN of PB_CELERY_BROKER_URL."
+  value       = module.data.celery_broker_url_secret_arn
+}
+
+output "celery_result_backend_secret_arn" {
+  description = "Secrets Manager ARN of PB_CELERY_RESULT_BACKEND."
+  value       = module.data.celery_result_backend_secret_arn
 }
 
 output "bucket_id" {

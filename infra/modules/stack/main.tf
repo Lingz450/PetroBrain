@@ -12,11 +12,9 @@ locals {
 
   app_environment = merge({
     PB_ENVIRONMENT                 = var.env
+    PB_CORS_ALLOW_ORIGINS          = var.cors_allow_origins
     PB_LLM_PROVIDER                = var.llm_provider
     PB_PERSISTENCE_BACKEND         = "postgres"
-    PB_REDIS_URL                   = "${module.data.redis_url}/0"
-    PB_CELERY_BROKER_URL           = "${module.data.redis_url}/1"
-    PB_CELERY_RESULT_BACKEND       = "${module.data.redis_url}/2"
     PB_OBJECT_STORE_BACKEND        = "s3"
     PB_OBJECT_STORE_BUCKET         = module.data.bucket_id
     PB_OBJECT_STORE_REGION         = var.region
@@ -27,13 +25,22 @@ locals {
     PB_METRICS_ENABLED             = "true"
     PB_LOG_JSON                    = "true"
     PB_OPERATIONAL_TIER            = "false"
+    PB_ENABLE_SELF_SIGNUP          = "false"
+    PB_MALWARE_SCAN_ENABLED        = "true"
+    PB_MALWARE_SCAN_FAIL_CLOSED    = "true"
+    PB_MALWARE_SCAN_HOST           = "127.0.0.1"
+    PB_MALWARE_SCAN_PORT           = "3310"
   }, var.extra_environment)
 
   app_secrets = {
-    PB_DATABASE_URL   = module.data.db_url_secret_arn
-    PB_JWT_SECRET     = module.secrets.secret_arns["jwt-secret"]
-    ANTHROPIC_API_KEY = module.secrets.secret_arns["anthropic-api-key"]
-    OPENAI_API_KEY    = module.secrets.secret_arns["openai-api-key"]
+    PB_DATABASE_URL          = module.data.db_url_secret_arn
+    PB_REDIS_URL             = module.data.redis_url_secret_arn
+    PB_CELERY_BROKER_URL     = module.data.celery_broker_url_secret_arn
+    PB_CELERY_RESULT_BACKEND = module.data.celery_result_backend_secret_arn
+    PB_JWT_SECRET            = module.secrets.secret_arns["jwt-secret"]
+    PB_METRICS_AUTH_TOKEN    = module.secrets.secret_arns["metrics-auth-token"]
+    ANTHROPIC_API_KEY        = module.secrets.secret_arns["anthropic-api-key"]
+    OPENAI_API_KEY           = module.secrets.secret_arns["openai-api-key"]
   }
 }
 
@@ -55,21 +62,22 @@ module "secrets" {
 }
 
 module "data" {
-  source                   = "../data"
-  name                     = local.name
-  private_subnet_ids       = module.network.private_subnet_ids
-  data_sg_id               = module.network.data_sg_id
-  db_instance_class        = var.db_instance_class
-  db_allocated_storage     = var.db_allocated_storage
-  db_multi_az              = var.db_multi_az
-  db_backup_retention_days = var.db_backup_retention_days
-  db_deletion_protection   = var.db_deletion_protection
-  db_skip_final_snapshot   = var.db_skip_final_snapshot
-  redis_node_type          = var.redis_node_type
-  redis_num_cache_clusters = var.redis_num_cache_clusters
-  redis_automatic_failover = var.redis_automatic_failover
-  bucket_name              = var.bucket_name
-  tags                     = local.tags
+  source                           = "../data"
+  name                             = local.name
+  private_subnet_ids               = module.network.private_subnet_ids
+  data_sg_id                       = module.network.data_sg_id
+  db_instance_class                = var.db_instance_class
+  db_allocated_storage             = var.db_allocated_storage
+  db_multi_az                      = var.db_multi_az
+  db_backup_retention_days         = var.db_backup_retention_days
+  db_deletion_protection           = var.db_deletion_protection
+  db_skip_final_snapshot           = var.db_skip_final_snapshot
+  redis_node_type                  = var.redis_node_type
+  redis_num_cache_clusters         = var.redis_num_cache_clusters
+  redis_automatic_failover         = var.redis_automatic_failover
+  redis_transit_encryption_enabled = var.redis_transit_encryption_enabled
+  bucket_name                      = var.bucket_name
+  tags                             = local.tags
 }
 
 module "observability" {

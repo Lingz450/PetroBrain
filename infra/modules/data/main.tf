@@ -78,6 +78,11 @@ resource "aws_secretsmanager_secret_version" "db_url" {
 
 # ---- Redis -------------------------------------------------------------------
 
+resource "random_password" "redis_auth" {
+  length  = 48
+  special = false
+}
+
 resource "aws_elasticache_subnet_group" "this" {
   name       = "${var.name}-redis"
   subnet_ids = var.private_subnet_ids
@@ -100,11 +105,50 @@ resource "aws_elasticache_replication_group" "this" {
   security_group_ids = [var.data_sg_id]
 
   at_rest_encryption_enabled = true
-  # Transit encryption requires an auth token and the rediss:// scheme; enable
-  # in prod via a follow-up once the app's Redis URL is parameterized for TLS.
-  transit_encryption_enabled = false
+  transit_encryption_enabled = var.redis_transit_encryption_enabled
+  auth_token                 = var.redis_transit_encryption_enabled ? random_password.redis_auth.result : null
 
   tags = merge(var.tags, { Name = "${var.name}-redis" })
+}
+
+locals {
+  redis_scheme          = var.redis_transit_encryption_enabled ? "rediss" : "redis"
+  redis_authority       = var.redis_transit_encryption_enabled ? format(":%s@", random_password.redis_auth.result) : ""
+  redis_primary_address = aws_elasticache_replication_group.this.primary_endpoint_address
+  redis_base_url        = format("%s://%s%s:%d", local.redis_scheme, local.redis_authority, local.redis_primary_address, 6379)
+}
+
+resource "aws_secretsmanager_secret" "redis_url" {
+  name                    = "${var.name}/redis-url"
+  recovery_window_in_days = 0
+  tags                    = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "redis_url" {
+  secret_id     = aws_secretsmanager_secret.redis_url.id
+  secret_string = "${local.redis_base_url}/0"
+}
+
+resource "aws_secretsmanager_secret" "celery_broker_url" {
+  name                    = "${var.name}/celery-broker-url"
+  recovery_window_in_days = 0
+  tags                    = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "celery_broker_url" {
+  secret_id     = aws_secretsmanager_secret.celery_broker_url.id
+  secret_string = "${local.redis_base_url}/1"
+}
+
+resource "aws_secretsmanager_secret" "celery_result_backend" {
+  name                    = "${var.name}/celery-result-backend"
+  recovery_window_in_days = 0
+  tags                    = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "celery_result_backend" {
+  secret_id     = aws_secretsmanager_secret.celery_result_backend.id
+  secret_string = "${local.redis_base_url}/2"
 }
 
 # ---- S3 ----------------------------------------------------------------------

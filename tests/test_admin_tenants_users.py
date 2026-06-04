@@ -157,6 +157,35 @@ def test_platform_admin_can_invite_into_any_tenant(users_repo):
     assert r.status_code == 201
 
 
+def test_tenant_admin_cannot_invite_platform_admin(users_repo):
+    r = client.post(
+        "/admin/tenants/tenant-a/users",
+        headers=_tenant_admin_headers(),
+        json={"email": "owner@example.com", "role": "platform_admin"},
+    )
+    assert r.status_code == 403
+
+
+def test_tenant_admin_cannot_promote_user_to_platform_admin(users_repo):
+    invited = users_repo.invite(tenant_id="tenant-a", email="x@x", role="field")
+    r = client.patch(
+        f"/admin/tenants/tenant-a/users/{invited.id}/role",
+        headers=_tenant_admin_headers(),
+        json={"role": "platform_admin"},
+    )
+    assert r.status_code == 403
+
+
+def test_tenant_admin_cannot_manage_existing_platform_admin(users_repo):
+    invited = users_repo.invite(tenant_id="tenant-a", email="owner@x", role="platform_admin")
+    r = client.patch(
+        f"/admin/tenants/tenant-a/users/{invited.id}/status",
+        headers=_tenant_admin_headers(),
+        json={"status": "deactivated"},
+    )
+    assert r.status_code == 403
+
+
 def test_invite_duplicate_email_is_422(users_repo):
     headers = _tenant_admin_headers()
     body = {"email": "bob@example.com", "role": "engineer"}

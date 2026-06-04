@@ -1,4 +1,4 @@
-import type { Citation, Module, ToolResult } from '@petrobrain/types';
+import type { Citation, EvidencePack, Module, ToolResult } from '@petrobrain/types';
 
 export type MessageRole = 'user' | 'assistant';
 
@@ -44,6 +44,7 @@ export interface AssistantMessage {
   text: string;
   citations: Citation[];
   toolResults: ToolResult[];
+  evidencePack: EvidencePack | null;
   flags: string[];
   streaming: boolean;
   error?: string;

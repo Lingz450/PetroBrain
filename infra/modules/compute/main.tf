@@ -27,6 +27,23 @@ locals {
       }
     }
   }
+
+  clamav_container = {
+    name      = "clamav"
+    image     = var.clamav_image
+    essential = true
+    portMappings = [
+      { containerPort = 3310, protocol = "tcp" },
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = var.api_log_group
+        "awslogs-region"        = var.region
+        "awslogs-stream-prefix" = "clamav"
+      }
+    }
+  }
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -138,6 +155,7 @@ resource "aws_ecs_task_definition" "api" {
       ]
       environment = local.env_list
       secrets     = local.secrets_list
+      dependsOn   = [{ containerName = "clamav", condition = "START" }]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -147,6 +165,7 @@ resource "aws_ecs_task_definition" "api" {
         }
       }
     },
+    local.clamav_container,
     local.otel_container,
   ])
 

@@ -16,7 +16,7 @@ variable "recovery_window_in_days" {
 variable "secret_keys" {
   description = "Logical secret names to provision (value set out-of-band)."
   type        = list(string)
-  default     = ["jwt-secret", "anthropic-api-key", "openai-api-key"]
+  default     = ["jwt-secret", "metrics-auth-token", "anthropic-api-key", "openai-api-key"]
 }
 
 variable "tags" {
@@ -31,10 +31,27 @@ resource "aws_secretsmanager_secret" "app" {
   tags                    = merge(var.tags, { Name = "${var.name}-${each.key}" })
 }
 
+resource "random_password" "jwt_secret" {
+  length  = 64
+  special = false
+}
+
+resource "random_password" "metrics_auth_token" {
+  length  = 48
+  special = false
+}
+
+locals {
+  generated_secret_values = {
+    jwt-secret         = random_password.jwt_secret.result
+    metrics-auth-token = random_password.metrics_auth_token.result
+  }
+}
+
 resource "aws_secretsmanager_secret_version" "app" {
   for_each      = aws_secretsmanager_secret.app
   secret_id     = each.value.id
-  secret_string = "REPLACE_ME_VIA_RUNBOOK"
+  secret_string = lookup(local.generated_secret_values, each.key, "REPLACE_ME_VIA_RUNBOOK")
   lifecycle {
     ignore_changes = [secret_string]
   }

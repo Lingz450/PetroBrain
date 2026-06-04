@@ -14,8 +14,8 @@ same modules with different sizing/HA toggles.
 infra/
   modules/
     network/        VPC, public+private subnets, NAT, edge/app/data security groups
-    secrets/        Secrets Manager containers (jwt, anthropic, openai) - values set out-of-band
-    data/           RDS Postgres (pgvector), ElastiCache Redis, S3 docs bucket, DATABASE_URL secret
+    secrets/        Secrets Manager containers (jwt, metrics, anthropic, openai) - values set out-of-band
+    data/           RDS Postgres (pgvector), ElastiCache Redis, S3 docs bucket, DB/Redis URL secrets
     observability/  CloudWatch log groups + ADOT/OTLP collector config (SSM)
     edge/           Application Load Balancer + WAFv2 web ACL
     compute/        ECS Fargate cluster, IAM, API + worker task defs (ADOT sidecar), services
@@ -61,7 +61,7 @@ terraform apply -var-file=terraform.tfvars
 ```
 
 Edit `terraform.tfvars` first: set `image`, a globally-unique `bucket_name`,
-and (prod) `certificate_arn`.
+`cors_allow_origins`, and (prod) `certificate_arn`.
 
 ## dev vs prod
 
@@ -72,16 +72,13 @@ and (prod) `certificate_arn`.
 | RDS | t4g.medium, single-AZ | r6g.large, multi-AZ |
 | RDS deletion protection | off | on |
 | Final snapshot | skipped | taken |
-| Redis | 1 node | 2 nodes, auto-failover |
+| Redis | 1 node, TLS/AUTH | 2 nodes, TLS/AUTH, auto-failover |
 | API / worker tasks | 1 / 1 | 2 / 2 |
 | TLS | HTTP-only | HTTPS (ACM) |
 | Log retention | 14d | 90d |
 
 ## Known follow-ups
 
-- **Redis TLS/auth**: transit encryption is off (private-subnet + SG only). Enable
-  `transit_encryption_enabled` + auth token once the app's Redis URL supports
-  `rediss://`.
 - **Provider lock**: `.terraform.lock.hcl` is gitignored because it was generated
   for one platform here; run `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64`
   and commit it deliberately.

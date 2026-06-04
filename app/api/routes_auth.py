@@ -119,7 +119,7 @@ def _resolve_signup_role(email: str) -> str:
     (and any other named bootstrappers) can self-serve admin access without
     a chicken-and-egg admin-invites-admin flow."""
     settings = get_settings()
-    raw = (settings.bootstrap_platform_admin_emails or "").strip()
+    raw = (getattr(settings, "bootstrap_platform_admin_emails", "") or "").strip()
     if not raw:
         return settings.default_signup_role
     needles = {e.strip().lower() for e in raw.split(",") if e.strip()}

@@ -10,6 +10,7 @@ from __future__ import annotations
 from celery import Celery
 
 from app.config import get_settings
+from app.core.redis_security import redis_ssl_options
 
 
 def build_celery_app() -> Celery:
@@ -26,6 +27,12 @@ def build_celery_app() -> Celery:
     app.conf.task_default_queue = "petrobrain.ingest"
     app.conf.worker_max_tasks_per_child = 100
     app.conf.broker_connection_retry_on_startup = True
+    broker_ssl = redis_ssl_options(settings.celery_broker_url, settings)
+    if broker_ssl:
+        app.conf.broker_use_ssl = broker_ssl
+    backend_ssl = redis_ssl_options(settings.celery_result_backend, settings)
+    if backend_ssl:
+        app.conf.redis_backend_use_ssl = backend_ssl
     return app
 
 

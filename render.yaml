@@ -46,9 +46,9 @@ services:
       - key: PB_AUDIT_LOG_PATH
         value: /tmp/audit.jsonl
 
-      # --- App identity ---
+      # --- App identity (demo/free-tier only; AWS Terraform is the production path). ---
       - key: PB_ENVIRONMENT
-        value: prod
+        value: demo
       - key: PB_OPERATIONAL_TIER
         value: "false"
       - key: PB_SOVEREIGN_REGION
@@ -85,7 +85,9 @@ services:
       - key: PB_LOG_JSON
         value: "true"
       - key: PB_METRICS_ENABLED
-        value: "true"
+        value: "false"
+      - key: PB_METRICS_AUTH_TOKEN
+        sync: false
 
       # --- Auth: Render generates a strong secret on first deploy. ---
       - key: PB_JWT_SECRET
@@ -94,13 +96,15 @@ services:
         value: petrobrain
       - key: PB_JWT_AUDIENCE
         value: petrobrain-api
+      - key: PB_ENABLE_SELF_SIGNUP
+        value: "false"
 
       # --- Optional web search via Tavily. Leave blank to disable. ---
       - key: PB_TAVILY_API_KEY
         sync: false
 
-      # --- CORS: paste the Vercel domain after the first frontend deploy.
-      #     For first deploy, set to '*' so any origin can call the API. ---
+      # --- CORS: paste the deployed frontend/admin HTTPS origin(s).
+      #     Do not use '*', localhost, or 127.0.0.1 outside local dev. ---
       - key: PB_CORS_ALLOW_ORIGINS
         sync: false
 

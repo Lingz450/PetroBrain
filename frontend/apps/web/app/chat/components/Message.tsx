@@ -11,7 +11,8 @@ import { isCanvasWorthy } from '@/lib/chat/canvas';
 
 import { Markdown } from './Markdown';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import { WorkingPanel } from './WorkingPanel';
+import { EvidencePanel } from './EvidencePanel';
+import { userSafeToolLabel, WorkingPanel } from './WorkingPanel';
 
 const FLAG_BANNERS: Record<string, { tone: 'danger' | 'warn' | 'info'; title: string }> = {
   safety_bypass: { tone: 'danger', title: "I can't help with bypassing a safety system." },
@@ -162,6 +163,8 @@ function AssistantMessageView({
           </div>
         ) : null}
 
+        <EvidencePanel evidence={message.evidencePack} />
+
         {message.citations.length > 0 ? (
           <SourcesFooter citations={message.citations} />
         ) : null}
@@ -260,16 +263,13 @@ function WorkingTrace({
 }
 
 function summariseTools(results: AssistantMessage['toolResults']): string {
-  if (results.length === 0) return 'No tools used';
+  if (results.length === 0) return 'No background work';
   if (results.length === 1) {
     const name = results[0]!.tool;
     if (name === 'web_search') return 'Searched the web';
-    if (name === 'build_kill_sheet') return 'Built kill sheet';
-    if (name === 'build_ghgemp_report') return 'Built GHGEMP report';
-    if (name === 'build_ptw_template') return 'Built PTW template';
-    return `Used ${name.replace(/_/g, ' ')}`;
+    return userSafeToolLabel(name);
   }
-  return `Used ${results.length} tools`;
+  return `Completed ${results.length} checks`;
 }
 
 function SourcesFooter({ citations }: { citations: Citation[] }) {

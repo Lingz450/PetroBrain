@@ -1,4 +1,4 @@
-import type { Module } from '@petrobrain/types';
+import type { EvidencePack, Module } from '@petrobrain/types';
 
 export interface StreamChatAttachment {
   name: string;
@@ -26,7 +26,16 @@ export type StreamEvent =
   | { event: 'tool_result'; data: { tool: string; result: Record<string, unknown> } }
   | { event: 'citation'; data: { title: string | null; revision: string | null; clause: string | null } }
   | { event: 'flag'; data: { flag: string } }
-  | { event: 'done'; data: { answer: string; tool_results: unknown[]; flags: string[]; audit: Record<string, unknown> } };
+  | {
+      event: 'done';
+      data: {
+        answer: string;
+        tool_results: unknown[];
+        flags: string[];
+        audit: Record<string, unknown>;
+        evidence_pack?: EvidencePack;
+      };
+    };
 
 export interface StreamChatOptions {
   baseUrl: string;

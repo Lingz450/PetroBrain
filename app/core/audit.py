@@ -41,7 +41,7 @@ class AuditLogger:
         self.path = Path(path)
 
     def write(self, event: AuditEvent) -> dict[str, Any]:
-        record = event.as_record()
+        record = _redact(event.as_record())
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, default=_json_default, sort_keys=True) + "\n")
@@ -60,3 +60,33 @@ def _json_default(value: Any) -> Any:
     if hasattr(value, "as_dict"):
         return value.as_dict()
     return str(value)
+
+
+_SENSITIVE_KEYS = {
+    "password",
+    "password_hash",
+    "token",
+    "authorization",
+    "api_key",
+    "secret",
+    "object_store_secret_key",
+}
+
+
+def _redact(value: Any) -> Any:
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            lowered = str(key).lower()
+            if (
+                lowered in _SENSITIVE_KEYS
+                or lowered.endswith("_token")
+                or lowered.endswith("_secret")
+            ):
+                out[key] = "[REDACTED]"
+            else:
+                out[key] = _redact(item)
+        return out
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value

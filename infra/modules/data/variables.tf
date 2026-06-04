@@ -77,6 +77,11 @@ variable "redis_automatic_failover" {
   default = false
 }
 
+variable "redis_transit_encryption_enabled" {
+  type    = bool
+  default = true
+}
+
 # ---- S3 ----------------------------------------------------------------------
 variable "bucket_name" {
   description = "Globally-unique S3 bucket name for document storage."

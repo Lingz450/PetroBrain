@@ -7,7 +7,9 @@ import { Banner } from '@petrobrain/ui';
 import { isStructuredToolMessage } from '@/lib/chat/canvas';
 import type { AssistantMessage } from '@/lib/chat/types';
 
+import { EvidencePanel } from './EvidencePanel';
 import { Markdown } from './Markdown';
+import { userSafeToolLabel } from './WorkingPanel';
 
 export function CanvasPanel({
   message,
@@ -85,6 +87,10 @@ export function CanvasPanel({
           </p>
         )}
 
+        <div className="mt-6">
+          <EvidencePanel evidence={message.evidencePack} />
+        </div>
+
         {message.citations.length > 0 ? (
           <section className="mt-8 border-t border-neutral-200/70 pt-5 dark:border-neutral-800/60">
             <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 dark:text-neutral-400">
@@ -117,15 +123,12 @@ export function CanvasPanel({
         {message.toolResults.length > 0 ? (
           <details className="mt-8 rounded-xl border border-neutral-200/70 bg-white/60 px-4 py-3 dark:border-neutral-800/60 dark:bg-neutral-900/60">
             <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 dark:text-neutral-400">
-              Tool calls ({message.toolResults.length})
+              Work completed ({message.toolResults.length})
             </summary>
-            <ol className="mt-3 space-y-3 text-xs">
+            <ol className="mt-3 space-y-2 text-sm text-neutral-700 dark:text-neutral-300">
               {message.toolResults.map((tr, i) => (
                 <li key={`${tr.tool}-${i}`}>
-                  <p className="font-semibold text-neutral-800 dark:text-neutral-200">{tr.tool}</p>
-                  <pre className="mt-1 max-h-72 overflow-auto rounded-lg bg-neutral-50 p-2 text-[11px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
-                    {JSON.stringify(tr.result, null, 2)}
-                  </pre>
+                  {userSafeToolLabel(tr.tool)}
                 </li>
               ))}
             </ol>

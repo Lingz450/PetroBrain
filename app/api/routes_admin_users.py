@@ -45,6 +45,21 @@ def _require_tenant_admin(principal: Principal, tenant_id: str) -> None:
     raise HTTPException(status_code=403, detail="role not allowed for principal")
 
 
+def _require_platform_role_change_allowed(
+    principal: Principal,
+    *,
+    target_role: str | None = None,
+    existing: dict | None = None,
+) -> None:
+    if principal.role == "platform_admin":
+        return
+    if target_role == "platform_admin" or (existing and existing.get("role") == "platform_admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="platform_admin users can only be managed by platform_admin principals",
+        )
+
+
 @router.get("")
 async def list_users(
     tenant_id: str,
@@ -64,6 +79,7 @@ async def invite_user(
     who: Principal = Depends(get_principal),
 ):
     _require_tenant_admin(who, tenant_id)
+    _require_platform_role_change_allowed(who, target_role=req.role)
     try:
         record = _repository().invite(
             tenant_id=tenant_id,
@@ -85,6 +101,13 @@ async def set_role(
     who: Principal = Depends(get_principal),
 ):
     _require_tenant_admin(who, tenant_id)
+    existing = _repository().get(tenant_id=tenant_id, user_id=user_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"user {user_id!r} not found in tenant {tenant_id!r}",
+        )
+    _require_platform_role_change_allowed(who, target_role=req.role, existing=existing)
     try:
         record = _repository().set_role(
             tenant_id=tenant_id, user_id=user_id, role=req.role,
@@ -105,6 +128,13 @@ async def set_status(
     who: Principal = Depends(get_principal),
 ):
     _require_tenant_admin(who, tenant_id)
+    existing = _repository().get(tenant_id=tenant_id, user_id=user_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"user {user_id!r} not found in tenant {tenant_id!r}",
+        )
+    _require_platform_role_change_allowed(who, existing=existing)
     try:
         record = _repository().set_status(
             tenant_id=tenant_id, user_id=user_id, status=req.status,
@@ -131,6 +161,13 @@ async def set_allowed_assets(
     who: Principal = Depends(get_principal),
 ):
     _require_tenant_admin(who, tenant_id)
+    existing = _repository().get(tenant_id=tenant_id, user_id=user_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"user {user_id!r} not found in tenant {tenant_id!r}",
+        )
+    _require_platform_role_change_allowed(who, existing=existing)
     try:
         record = _repository().set_allowed_assets(
             tenant_id=tenant_id, user_id=user_id,

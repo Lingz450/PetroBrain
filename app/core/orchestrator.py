@@ -21,21 +21,28 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable
 
+from app.core.evidence import build_evidence_pack
 from app.core.guardrails import post_check, pre_check
 from app.core.llm_service import LLMConfigurationError, LLMService
 from app.core.prompts import build_system_prompt
 from app.modules.emissions_mrv.agent import (
     BUILD_GHGEMP_REPORT_TOOL,
+    BUILD_REPORT_TOOL,
     COMBUSTION_TOOL,
     FLARING_TOOL,
     FUGITIVE_TIER2_TOOL,
     FUGITIVE_TIER3_TOOL,
+    MODEL_ABATEMENT_TOOL,
+    RECONCILE_FLARING_TOOL,
     VENTING_TOOL,
     run_build_ghgemp_report_tool,
+    run_build_report_tool,
     run_combustion_tool,
     run_flaring_tool,
     run_fugitive_tier2_tool,
     run_fugitive_tier3_tool,
+    run_model_abatement_tool,
+    run_reconcile_flaring_tool,
     run_venting_tool,
 )
 from app.core.web_search import WEB_SEARCH_TOOL, run_web_search_tool
@@ -54,6 +61,51 @@ def _resolve_asset_context(*, tenant_id: str, asset_id: str):
         # orchestrator falls through to free-text asset_context handling.
         return None
 
+
+async def _complete_with_optional_thinking(
+    llm,
+    system: str,
+    messages: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]] | None,
+    thinking_mode: str,
+):
+    try:
+        return await llm.complete(
+            system,
+            messages,
+            tools=tools,
+            thinking_mode=thinking_mode,
+        )
+    except TypeError as exc:
+        if "thinking_mode" not in str(exc):
+            raise
+        return await llm.complete(system, messages, tools=tools)
+
+
+async def _stream_with_optional_thinking(
+    llm,
+    system: str,
+    messages: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]] | None,
+    thinking_mode: str,
+):
+    try:
+        stream = llm.stream_complete(
+            system,
+            messages,
+            tools=tools,
+            thinking_mode=thinking_mode,
+        )
+    except TypeError as exc:
+        if "thinking_mode" not in str(exc):
+            raise
+        stream = llm.stream_complete(system, messages, tools=tools)
+    async for item in stream:
+        yield item
+
+
 # Tool registry: name -> (schema, deterministic python entrypoint)
 TOOL_REGISTRY: dict[str, tuple[dict, Callable[[dict], dict]]] = {
     "build_kill_sheet": (KILL_SHEET_TOOL, run_kill_sheet_tool),
@@ -63,6 +115,9 @@ TOOL_REGISTRY: dict[str, tuple[dict, Callable[[dict], dict]]] = {
     "fugitive_tier3": (FUGITIVE_TIER3_TOOL, run_fugitive_tier3_tool),
     "combustion_emissions": (COMBUSTION_TOOL, run_combustion_tool),
     "build_ghgemp_report": (BUILD_GHGEMP_REPORT_TOOL, run_build_ghgemp_report_tool),
+    "build_report": (BUILD_REPORT_TOOL, run_build_report_tool),
+    "reconcile_flaring": (RECONCILE_FLARING_TOOL, run_reconcile_flaring_tool),
+    "model_abatement": (MODEL_ABATEMENT_TOOL, run_model_abatement_tool),
     "build_ptw_template": (BUILD_PTW_TEMPLATE_TOOL, run_build_ptw_template_tool),
     "web_search": (WEB_SEARCH_TOOL, run_web_search_tool),
 }
@@ -76,6 +131,9 @@ MODULE_TOOLS = {
         "fugitive_tier3",
         "combustion_emissions",
         "build_ghgemp_report",
+        "build_report",
+        "reconcile_flaring",
+        "model_abatement",
         "web_search",
     ],
     "ptw": ["build_ptw_template", "web_search"],
@@ -98,6 +156,7 @@ class Turn:
     flags: list[str] = field(default_factory=list)
     audit: dict[str, Any] = field(default_factory=dict)
     citations: list[dict[str, Any]] = field(default_factory=list)
+    evidence_pack: dict[str, Any] = field(default_factory=dict)
 
 
 # Anthropic accepts image content blocks up to ~5 MB base64-decoded. Stay
@@ -197,6 +256,25 @@ class Orchestrator:
         self.retriever = retriever
         self.llm = llm or LLMService()
 
+    def _evidence_pack(
+        self,
+        *,
+        citations: list[dict[str, Any]] | None,
+        tool_results: list[dict[str, Any]] | None,
+        flags: list[str] | None,
+        module: str,
+        offline_mode: bool,
+        disable_web_search: bool,
+    ) -> dict[str, Any]:
+        return build_evidence_pack(
+            citations=citations,
+            tool_results=tool_results,
+            flags=flags,
+            module=module,
+            offline_mode=offline_mode,
+            disable_web_search=disable_web_search,
+        )
+
     async def handle(
         self, user_text: str, *, module: str = "general", tenant_id: str = "",
         user_role: str | None = None, jurisdiction: str | None = None,
@@ -210,8 +288,20 @@ class Orchestrator:
         pre = pre_check(user_text)
         prefix = ""
         if not pre.allow:
-            return Turn(answer=pre.override_response or "", flags=pre.flags or [],
-                        audit={"stopped_at": "pre_guardrail", "reason": pre.reason})
+            out_flags = pre.flags or []
+            return Turn(
+                answer=pre.override_response or "",
+                flags=out_flags,
+                audit={"stopped_at": "pre_guardrail", "reason": pre.reason},
+                evidence_pack=self._evidence_pack(
+                    citations=[],
+                    tool_results=[],
+                    flags=out_flags,
+                    module=module,
+                    offline_mode=offline_mode,
+                    disable_web_search=disable_web_search,
+                ),
+            )
         if pre.flags:
             flags += pre.flags
             if pre.override_response:      # live event: lead with immediate action
@@ -264,7 +354,13 @@ class Orchestrator:
         user_content = _build_user_message_content(user_text, attachments)
         messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
         try:
-            resp = await self.llm.complete(system, messages, tools=tools or None, thinking_mode=thinking_mode)
+            resp = await _complete_with_optional_thinking(
+                self.llm,
+                system,
+                messages,
+                tools=tools or None,
+                thinking_mode=thinking_mode,
+            )
         except LLMConfigurationError as exc:
             return Turn(
                 answer=f"LLM provider is not configured: {exc}",
@@ -273,6 +369,14 @@ class Orchestrator:
                     "tenant_id": tenant_id, "module": module, "stopped_at": "llm_config",
                     "reason": str(exc), "retrieved_clauses": retrieved_clauses,
                 },
+                evidence_pack=self._evidence_pack(
+                    citations=retrieved_citations,
+                    tool_results=[],
+                    flags=[*flags, "llm_configuration_error"],
+                    module=module,
+                    offline_mode=offline_mode,
+                    disable_web_search=disable_web_search,
+                ),
             )
 
         # 5. execute deterministic tools
@@ -298,6 +402,15 @@ class Orchestrator:
                             "stopped_at": "tool_dispatch", "unknown_tool": tool_name,
                             "retrieved_clauses": retrieved_clauses, "flags": flags,
                         },
+                        citations=retrieved_citations,
+                        evidence_pack=self._evidence_pack(
+                            citations=retrieved_citations,
+                            tool_results=tool_results,
+                            flags=flags,
+                            module=module,
+                            offline_mode=offline_mode,
+                            disable_web_search=disable_web_search,
+                        ),
                     )
                 try:
                     tool_input = _tool_input_as_dict(call.get("input", {}))
@@ -318,8 +431,21 @@ class Orchestrator:
                             "reason": str(exc), "retrieved_clauses": retrieved_clauses,
                             "flags": flags,
                         },
+                        citations=retrieved_citations,
+                        evidence_pack=self._evidence_pack(
+                            citations=retrieved_citations,
+                            tool_results=tool_results,
+                            flags=flags,
+                            module=module,
+                            offline_mode=offline_mode,
+                            disable_web_search=disable_web_search,
+                        ),
                     )
-                tool_results.append({"tool": call["name"], "input": audit_tool_input, "result": result})
+                tool_results.append({
+                    "tool": call["name"],
+                    "input": audit_tool_input,
+                    "result": result,
+                })
                 tool_blocks.append({
                     "role": "user",
                     "content": [{"type": "tool_result", "tool_use_id": call.get("id"),
@@ -329,7 +455,13 @@ class Orchestrator:
             messages.append(_assistant_turn_with_tool_use(resp.text, resp.tool_calls))
             messages += tool_blocks
             try:
-                resp = await self.llm.complete(system, messages, tools=tools or None, thinking_mode=thinking_mode)
+                resp = await _complete_with_optional_thinking(
+                    self.llm,
+                    system,
+                    messages,
+                    tools=tools or None,
+                    thinking_mode=thinking_mode,
+                )
             except LLMConfigurationError as exc:
                 return Turn(
                     answer=f"LLM provider is not configured: {exc}",
@@ -341,6 +473,15 @@ class Orchestrator:
                         "n_tool_calls": len(tool_results),
                         "retrieved_clauses": retrieved_clauses, "flags": flags,
                     },
+                    citations=retrieved_citations,
+                    evidence_pack=self._evidence_pack(
+                        citations=retrieved_citations,
+                        tool_results=tool_results,
+                        flags=[*flags, "llm_configuration_error"],
+                        module=module,
+                        offline_mode=offline_mode,
+                        disable_web_search=disable_web_search,
+                    ),
                 )
 
         answer = prefix + (resp.text or "")
@@ -362,8 +503,16 @@ class Orchestrator:
             "usage": resp.usage, "n_tool_calls": len(tool_results),
             "retrieved_clauses": retrieved_clauses, "flags": flags,
         }
+        evidence_pack = self._evidence_pack(
+            citations=retrieved_citations,
+            tool_results=tool_results,
+            flags=flags,
+            module=module,
+            offline_mode=offline_mode,
+            disable_web_search=disable_web_search,
+        )
         return Turn(answer=answer, tool_results=tool_results, flags=flags, audit=audit,
-                    citations=retrieved_citations)
+                    citations=retrieved_citations, evidence_pack=evidence_pack)
 
     async def stream_handle(
         self, user_text: str, *, module: str = "general", tenant_id: str = "",
@@ -387,6 +536,14 @@ class Orchestrator:
                 "tool_results": [],
                 "flags": flags,
                 "audit": {"stopped_at": "pre_guardrail", "reason": pre.reason},
+                "evidence_pack": self._evidence_pack(
+                    citations=[],
+                    tool_results=[],
+                    flags=flags,
+                    module=module,
+                    offline_mode=offline_mode,
+                    disable_web_search=disable_web_search,
+                ),
             }}
             return
         if pre.flags:
@@ -443,7 +600,13 @@ class Orchestrator:
 
         try:
             if tools:
-                resp = await self.llm.complete(system, messages, tools=tools, thinking_mode=thinking_mode)
+                resp = await _complete_with_optional_thinking(
+                    self.llm,
+                    system,
+                    messages,
+                    tools=tools,
+                    thinking_mode=thinking_mode,
+                )
                 model = resp.model
                 usage = dict(resp.usage or {})
                 answer_text = resp.text or ""
@@ -457,6 +620,14 @@ class Orchestrator:
                         )
                         if result_event.get("error_turn"):
                             turn_data = result_event["error_turn"]
+                            turn_data["evidence_pack"] = self._evidence_pack(
+                                citations=retrieved_citations,
+                                tool_results=turn_data.get("tool_results", []),
+                                flags=turn_data.get("flags", []),
+                                module=module,
+                                offline_mode=offline_mode,
+                                disable_web_search=disable_web_search,
+                            )
                             for flag in turn_data["flags"]:
                                 yield {"event": "flag", "data": {"flag": flag}}
                             yield {"event": "done", "data": turn_data}
@@ -472,7 +643,11 @@ class Orchestrator:
                             "tool": call.get("name"),
                             "result": result,
                         }}
-                        tool_results.append({"tool": call["name"], "input": tool_input, "result": result})
+                        tool_results.append({
+                            "tool": call["name"],
+                            "input": tool_input,
+                            "result": result,
+                        })
                         # Web-search results carry their own citation set (title +
                         # URL of each source). Surface them alongside the RAG
                         # citations so the chat UI can render click-through chips
@@ -533,6 +708,14 @@ class Orchestrator:
                     "tenant_id": tenant_id, "module": module, "stopped_at": "llm_config",
                     "reason": str(exc), "retrieved_clauses": retrieved_clauses,
                 },
+                "evidence_pack": self._evidence_pack(
+                    citations=retrieved_citations,
+                    tool_results=tool_results,
+                    flags=flags,
+                    module=module,
+                    offline_mode=offline_mode,
+                    disable_web_search=disable_web_search,
+                ),
             }}
             return
 
@@ -555,11 +738,20 @@ class Orchestrator:
             "retrieved_clauses": retrieved_clauses, "flags": flags,
             "retrieved_citations": retrieved_citations,
         }
+        evidence_pack = self._evidence_pack(
+            citations=retrieved_citations,
+            tool_results=tool_results,
+            flags=flags,
+            module=module,
+            offline_mode=offline_mode,
+            disable_web_search=disable_web_search,
+        )
         yield {"event": "done", "data": {
             "answer": answer,
             "tool_results": tool_results,
             "flags": flags,
             "audit": audit,
+            "evidence_pack": evidence_pack,
         }}
 
     async def _stream_llm_to_events(self, system: str, messages: list[dict[str, Any]],
@@ -574,7 +766,9 @@ class Orchestrator:
         buffered events into a list and only yielded after the stream closed.
         """
         if hasattr(self.llm, "stream_complete"):
-            async for item in self.llm.stream_complete(system, messages, tools=tools or None, thinking_mode=thinking_mode):
+            async for item in _stream_with_optional_thinking(
+                self.llm, system, messages, tools=tools or None, thinking_mode=thinking_mode
+            ):
                 if item.get("type") == "token":
                     final["text"] += item.get("text", "")
                     if emit:
@@ -587,7 +781,13 @@ class Orchestrator:
                         "model": item.get("model", ""),
                     })
         else:
-            resp = await self.llm.complete(system, messages, tools=tools or None, thinking_mode=thinking_mode)
+            resp = await _complete_with_optional_thinking(
+                self.llm,
+                system,
+                messages,
+                tools=tools or None,
+                thinking_mode=thinking_mode,
+            )
             final["text"] = resp.text
             final["tool_calls"] = resp.tool_calls
             final["usage"] = resp.usage

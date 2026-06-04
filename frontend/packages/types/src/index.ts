@@ -38,6 +38,27 @@ export interface ToolResult<TInput = unknown, TOutput = unknown> {
   result: TOutput;
 }
 
+export interface EvidenceSource {
+  type: 'document' | 'web' | string;
+  label: string;
+  url?: string | null;
+}
+
+export interface EvidenceCalculation {
+  label: string;
+  outputs: Array<{ label: string; value: string | number | boolean }>;
+  formulas: string[];
+}
+
+export interface EvidencePack {
+  confidence: { label: string; reason: string };
+  checked: string[];
+  not_verified: string[];
+  sources: EvidenceSource[];
+  calculations: EvidenceCalculation[];
+  safety: { requires_human_verification: boolean; message: string };
+}
+
 export type ConfidenceLabel = 'high' | 'medium' | 'low' | 'unknown';
 
 export interface ConfidenceSignal {

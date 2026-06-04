@@ -59,3 +59,53 @@ TIER2_FUGITIVE_EF_KG_CH4_PER_COMPONENT_HR = {
 
 # Default flare combustion (destruction) efficiency if not measured.
 DEFAULT_FLARE_COMBUSTION_EFFICIENCY = 0.98
+
+# ---------------------------------------------------------------------------
+# GHG-Protocol Scope-3 categories RELEVANT to an oil & gas operator.
+# This is deliberately NOT the full generic 15-category list - it is the subset
+# that matters for an upstream/midstream operator. The dominant line for O&G is
+# category 11 (use of sold products = combustion of the hydrocarbons sold), which
+# typically dwarfs Scope 1 + 2 combined.
+#
+# `ghg_protocol_category` is the official GHG-Protocol number so reports can map
+# back to the standard. Scope-3 emission factors are supplied per reporting and
+# are expressed as kg CO2e per activity unit (already CO2e - see engine).
+# ---------------------------------------------------------------------------
+OG_SCOPE3_CATEGORIES = {
+    "purchased_goods_services": {
+        "ghg_protocol_category": 1,
+        "label": "Purchased goods & services",
+    },
+    "capital_goods": {
+        "ghg_protocol_category": 2,
+        "label": "Capital goods",
+    },
+    "fuel_and_energy_related": {
+        "ghg_protocol_category": 3,
+        "label": "Fuel- and energy-related activities (not in Scope 1/2)",
+    },
+    "upstream_transport": {
+        "ghg_protocol_category": 4,
+        "label": "Upstream transportation & distribution",
+    },
+    "waste": {
+        "ghg_protocol_category": 5,
+        "label": "Waste generated in operations",
+    },
+    "business_travel": {
+        "ghg_protocol_category": 6,
+        "label": "Business travel",
+    },
+    "downstream_transport": {
+        "ghg_protocol_category": 9,
+        "label": "Downstream transportation & distribution",
+    },
+    "processing_of_sold_products": {
+        "ghg_protocol_category": 10,
+        "label": "Processing of sold products",
+    },
+    "use_of_sold_products": {
+        "ghg_protocol_category": 11,
+        "label": "Use of sold products (combustion of sold hydrocarbons)",
+    },
+}

@@ -29,6 +29,11 @@ variable "certificate_arn" {
   default     = ""
 }
 
+variable "cors_allow_origins" {
+  description = "Comma-separated browser origins allowed to call the API."
+  type        = string
+}
+
 # ---- Sizing / HA toggles -----------------------------------------------------
 variable "vpc_cidr" {
   type    = string
@@ -98,6 +103,11 @@ variable "redis_num_cache_clusters" {
 variable "redis_automatic_failover" {
   type    = bool
   default = false
+}
+
+variable "redis_transit_encryption_enabled" {
+  type    = bool
+  default = true
 }
 
 variable "api_desired_count" {

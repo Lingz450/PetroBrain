@@ -9,16 +9,22 @@ from app.core.llm_service import LLMResponse
 from app.core.orchestrator import MODULE_TOOLS, Orchestrator, TOOL_REGISTRY
 from app.modules.emissions_mrv.agent import (
     BUILD_GHGEMP_REPORT_TOOL,
+    BUILD_REPORT_TOOL,
     COMBUSTION_TOOL,
     FLARING_TOOL,
     FUGITIVE_TIER2_TOOL,
     FUGITIVE_TIER3_TOOL,
+    MODEL_ABATEMENT_TOOL,
+    RECONCILE_FLARING_TOOL,
     VENTING_TOOL,
     run_build_ghgemp_report_tool,
+    run_build_report_tool,
     run_combustion_tool,
     run_flaring_tool,
     run_fugitive_tier2_tool,
     run_fugitive_tier3_tool,
+    run_model_abatement_tool,
+    run_reconcile_flaring_tool,
     run_venting_tool,
 )
 
@@ -28,7 +34,7 @@ class SequenceLLM:
         self.responses = list(responses)
         self.calls = []
 
-    async def complete(self, system_prompt, messages, tools=None):
+    async def complete(self, system_prompt, messages, tools=None, **kwargs):
         self.calls.append({"system": system_prompt, "messages": messages, "tools": tools})
         if not self.responses:
             raise AssertionError("unexpected extra LLM call")
@@ -114,6 +120,9 @@ def test_emissions_tools_registered_for_module():
         "fugitive_tier3",
         "combustion_emissions",
         "build_ghgemp_report",
+        "build_report",
+        "reconcile_flaring",
+        "model_abatement",
         "web_search",
     }
 
@@ -124,6 +133,103 @@ def test_emissions_tools_registered_for_module():
     assert TOOL_REGISTRY["fugitive_tier3"][0] is FUGITIVE_TIER3_TOOL
     assert TOOL_REGISTRY["combustion_emissions"][0] is COMBUSTION_TOOL
     assert TOOL_REGISTRY["build_ghgemp_report"][0] is BUILD_GHGEMP_REPORT_TOOL
+    assert TOOL_REGISTRY["build_report"][0] is BUILD_REPORT_TOOL
+    assert TOOL_REGISTRY["reconcile_flaring"][0] is RECONCILE_FLARING_TOOL
+    assert TOOL_REGISTRY["model_abatement"][0] is MODEL_ABATEMENT_TOOL
+
+
+def _sample_flaring_line():
+    return run_flaring_tool({
+        "source_id": "FL-1",
+        "gas_volume_scf": 1_000_000,
+        "composition": {"CH4": 1.0},
+        "combustion_efficiency": 0.98,
+        "measured": True,
+    })
+
+
+def test_build_report_tool_dispatches_frameworks():
+    line = _sample_flaring_line()
+    base = {
+        "facility_id": "FAC-1", "period": "2026-Q3",
+        "operator": "Demo E&P", "asset": "OML-DEMO", "lines": [line],
+    }
+    ghgemp = run_build_report_tool({**base, "framework": "ghgemp"})
+    assert ghgemp["framework"] == "ghgemp"
+    assert ghgemp["report"]["audit_sha256"]
+    assert "LLM must not recompute" in ghgemp["notes"][0]
+
+    ogmp = run_build_report_tool({
+        **base, "framework": "ogmp2",
+        "meta": {"gas_throughput_tonnes": 1000, "source_throughput_tonnes": {"FL-1": 1000}},
+    })
+    assert ogmp["report"]["framework"] == "OGMP 2.0"
+    assert ogmp["report"]["target_methane_intensity_pct"] == 0.2
+
+    iso = run_build_report_tool({**base, "framework": "iso14064"})
+    assert iso["report"]["framework"] == "ISO 14064-1:2018"
+
+
+def test_reconcile_flaring_tool_with_observations_flags_excess():
+    line = _sample_flaring_line()
+    result = run_reconcile_flaring_tool({
+        "reported_line": line,
+        "satellite_observations": [
+            {"detection_date": "2026-08-05", "flared_volume_scf": 1_500_000},
+            {"detection_date": "2026-08-20", "flared_volume_scf": 1_000_000},
+        ],
+    })
+    rec = result["reconciliation"]
+    assert rec["reconciliation_available"] is True
+    assert rec["observed_exceeds_reported"] is True
+    assert rec["observed_flared_scf"] == 2_500_000
+
+
+def test_reconcile_flaring_tool_asks_for_coordinates():
+    line = _sample_flaring_line()
+    # No observations and no resolvable coordinates -> honest request for coords.
+    result = run_reconcile_flaring_tool({"reported_line": line})
+    assert result["coordinates_required"] is True
+
+    # Coords present but no date range -> asks for the date range.
+    result2 = run_reconcile_flaring_tool({
+        "reported_line": line,
+        "asset_attributes": {"lat": 5.0, "lon": 6.0},
+    })
+    assert result2["date_range_required"] is True
+
+
+def test_reconcile_flaring_tool_unconfigured_provider_is_honest():
+    line = _sample_flaring_line()
+    # Coords + date range, but no satellite endpoint configured -> unavailable, honest.
+    result = run_reconcile_flaring_tool({
+        "reported_line": line,
+        "location": {"lat": 5.0, "lon": 6.0},
+        "date_range": {"start": "2026-08-01", "end": "2026-08-31"},
+    })
+    rec = result["reconciliation"]
+    assert rec["reconciliation_available"] is False
+    assert rec["variance_pct"] is None
+
+
+def test_model_abatement_tool_returns_mac_curve_and_disclaimer():
+    venting_line = run_venting_tool({
+        "source_id": "V-1", "gas_volume_scf": 10_000_000, "composition": {"CH4": 1.0},
+    })
+    result = run_model_abatement_tool({
+        "facility_id": "FAC-1", "period": "2026", "gwp_set": "AR6",
+        "lines": [venting_line],
+        "selected_measures": [{
+            "measure_id": "vapor_recovery_unit", "target_source_ids": ["V-1"],
+            "reduction_pct": 0.95, "capex_usd": 10_000, "opex_usd_per_yr": 1_000,
+            "gas_price_usd_per_mcf": 5.0,
+        }],
+    })
+    ab = result["abatement"]
+    assert ab["total_co2e_avoided_tonnes"] > 0
+    assert ab["measures"][0]["net_negative_cost"] is True
+    assert ab["mac_curve"][0]["measure_id"] == "vapor_recovery_unit"
+    assert any("ESTIMATE" in n for n in result["notes"])
 
 
 def test_orchestrator_dispatches_emissions_tool_without_llm_arithmetic():

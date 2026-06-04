@@ -43,8 +43,13 @@ async def chat(
     )
     latency_seconds = perf_counter() - started
     _finalize_chat_turn(req=req, turn=turn, who=who, latency_seconds=latency_seconds)
-    return ChatResponse(answer=turn.answer, tool_results=turn.tool_results, flags=turn.flags,
-                        citations=turn.citations)
+    return ChatResponse(
+        answer=turn.answer,
+        tool_results=turn.tool_results,
+        flags=turn.flags,
+        citations=turn.citations,
+        evidence_pack=turn.evidence_pack,
+    )
 
 
 async def _stream_chat(req: ChatRequest, who: Principal):
@@ -68,6 +73,7 @@ async def _stream_chat(req: ChatRequest, who: Principal):
             tool_results=final_data.get("tool_results", []),
             flags=final_data.get("flags", []),
             audit=final_data.get("audit", {}),
+            evidence_pack=final_data.get("evidence_pack", {}),
         )
         _finalize_chat_turn(
             req=req,
@@ -89,10 +95,27 @@ def _finalize_chat_turn(*, req: ChatRequest, turn: Turn, who: Principal,
         user_id=who.user_id,
         role=who.role,
         route="/chat",
-        request=req.model_dump(),
-        response={"answer": turn.answer},
+        request={
+            "request_hash": sha256_canonical(req.model_dump()),
+            "module": req.module,
+            "attachment_count": len(req.attachments or []),
+            "disable_web_search": req.disable_web_search,
+        },
+        response={
+            "response_hash": sha256_canonical({
+                "answer": turn.answer,
+                "tool_results": turn.tool_results,
+                "flags": turn.flags,
+            }),
+        },
         flags=turn.flags,
-        tool_results=turn.tool_results,
+        tool_results=[
+            {
+                "tool": tr.get("tool"),
+                "result_hash": sha256_canonical(tr.get("result", {})),
+            }
+            for tr in (turn.tool_results or [])
+        ],
         metadata=turn.audit,
     ))
     _record_audit_events(req=req, turn=turn, who=who)

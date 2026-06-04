@@ -16,6 +16,7 @@ function blankAssistant(): AssistantMessage {
     text: '',
     citations: [],
     toolResults: [],
+    evidencePack: null,
     flags: [],
     streaming: true,
     createdAt: 0,
@@ -62,6 +63,23 @@ describe('Message - kill-sheet stream', () => {
           },
         ],
         flags: [],
+        evidence_pack: {
+          confidence: { label: 'Medium', reason: 'Some supporting evidence is present, with noted gaps.' },
+          checked: ['1 deterministic calculation used.'],
+          not_verified: ['No uploaded SOP or procedure citation was used.'],
+          sources: [],
+          calculations: [
+            {
+              label: 'Kill sheet calculation',
+              outputs: [{ label: 'Kill Mud Weight ppg', value: 10.37 }],
+              formulas: ['KMW = OMW + SIDPP / (0.052 x TVD)'],
+            },
+          ],
+          safety: {
+            requires_human_verification: true,
+            message: 'Verify safety-critical outputs with the competent person before action.',
+          },
+        },
         audit: {},
       },
     },
@@ -71,9 +89,7 @@ describe('Message - kill-sheet stream', () => {
     const message = drive(events) as AssistantMessage;
     render(<Message message={message} />);
 
-    // The DECISION SUPPORT verification banner appears as role="status"
-    // (info-tone Banner). The same phrase also appears inside the raw-JSON
-    // dump within the WorkingPanel, so scope the assertion to the banner.
+    // The DECISION SUPPORT verification banner appears as role="status".
     const verificationBanner = screen.getByRole('status');
     expect(verificationBanner).toHaveTextContent('DECISION SUPPORT ONLY');
     expect(verificationBanner).toHaveTextContent(
@@ -81,12 +97,12 @@ describe('Message - kill-sheet stream', () => {
     );
 
     // Working panel exists and is open by default on safety-critical results.
-    const details = screen.getByText('build_kill_sheet').closest('details');
+    const details = screen.getAllByText('Built kill sheet')[1]!.closest('details');
     expect(details).not.toBeNull();
     expect(details).toHaveAttribute('open');
 
     // Headline number is visible inside the working panel.
-    expect(within(details as HTMLElement).getByText('kill_mud_weight_ppg')).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByText('Kill Mud Weight ppg')).toBeInTheDocument();
     expect(within(details as HTMLElement).getByText('10.37')).toBeInTheDocument();
 
     // Working steps render as an ordered list inside the details element
@@ -103,6 +119,55 @@ describe('Message - kill-sheet stream', () => {
     expect(
       screen.getByText(/Kill mud weight is 10\.37 ppg. Verify before pumping\./),
     ).toBeInTheDocument();
+    expect(screen.getByText('Verification')).toBeInTheDocument();
+    expect(screen.getByText('Kill sheet calculation')).toBeInTheDocument();
+  });
+
+  it('does not expose internal web-search tool names or queries', () => {
+    const message = drive([
+      {
+        event: 'tool_call',
+        data: { tool: 'web_search', id: 't1', input: { query: 'private search terms' } },
+      },
+      {
+        event: 'tool_result',
+        data: {
+          tool: 'web_search',
+          result: { results: [{ title: 'Source', url: 'https://example.com' }] },
+        },
+      },
+      { event: 'token', data: { text: 'Here is the current source summary.' } },
+      {
+        event: 'done',
+        data: {
+          answer: 'Here is the current source summary.',
+          tool_results: [
+            {
+              tool: 'web_search',
+              input: { query: 'private search terms' },
+              result: { results: [{ title: 'Source', url: 'https://example.com' }] },
+            },
+          ],
+          flags: [],
+          evidence_pack: {
+            confidence: { label: 'Medium', reason: 'Some supporting evidence is present, with noted gaps.' },
+            checked: ['1 source attached to the answer.'],
+            not_verified: ['No uploaded SOP or procedure citation was used.'],
+            sources: [{ type: 'web', label: 'Source', url: 'https://example.com' }],
+            calculations: [],
+            safety: { requires_human_verification: false, message: '' },
+          },
+          audit: {},
+        },
+      },
+    ]) as AssistantMessage;
+
+    render(<Message message={message} />);
+
+    expect(screen.getAllByText(/Checked current sources|Searched the web/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('web_search')).not.toBeInTheDocument();
+    expect(screen.queryByText(/query:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/private search terms/i)).not.toBeInTheDocument();
   });
 
   it('renders a guardrail refusal banner when a safety_bypass flag arrives', () => {

@@ -6,10 +6,11 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.api import deps, routes_chat
+from app.core.http_hardening import verify_metrics_access
 from app.core.llm_service import LLMResponse
 from app.core.observability import (
     configure_logging,
@@ -17,6 +18,7 @@ from app.core.observability import (
     install_request_metrics,
     record_chat_turn,
 )
+from app.core.redis_security import redis_ssl_options
 from app.main import app
 from tests.auth_helpers import auth_headers, jwt_settings
 
@@ -25,7 +27,7 @@ client = TestClient(app)
 
 
 class FakeLLM:
-    async def complete(self, system_prompt, messages, tools=None):
+    async def complete(self, system_prompt, messages, tools=None, **_kwargs):
         return LLMResponse(
             text="Check the applicable SOP and verify with the competent person.",
             tool_calls=[],
@@ -47,6 +49,26 @@ def test_metrics_endpoint_exposes_prometheus_metrics():
     assert "petrobrain_http_requests_total" in body
     assert "petrobrain_chat_turns_total" in body
     assert r.headers["content-type"].startswith("text/plain")
+
+
+def test_metrics_access_requires_token_in_prod():
+    request = SimpleNamespace(headers={}, url=SimpleNamespace(path="/metrics"))
+    settings = SimpleNamespace(environment="prod", metrics_auth_token="secret")
+
+    with pytest.raises(HTTPException) as exc:
+        verify_metrics_access(request, settings)
+
+    assert exc.value.status_code == 404
+
+
+def test_metrics_access_accepts_bearer_token_in_prod():
+    request = SimpleNamespace(
+        headers={"authorization": "Bearer secret"},
+        url=SimpleNamespace(path="/metrics"),
+    )
+    settings = SimpleNamespace(environment="prod", metrics_auth_token="secret")
+
+    verify_metrics_access(request, settings)
 
 
 def test_chat_records_model_usage_and_flag_metrics(monkeypatch):
@@ -101,6 +123,20 @@ def test_redis_token_counter_disabled_does_not_connect():
         usage={"input": 1, "output": 2},
         settings=settings,
     )
+
+
+def test_rediss_urls_build_ssl_options():
+    settings = SimpleNamespace(
+        redis_ssl_cert_reqs="required",
+        redis_ssl_ca_certs="/etc/ssl/certs/ca.pem",
+        redis_ssl_certfile="",
+        redis_ssl_keyfile="",
+    )
+
+    options = redis_ssl_options("rediss://:secret@redis.example:6379/0", settings)
+
+    assert options["ssl_ca_certs"] == "/etc/ssl/certs/ca.pem"
+    assert "ssl_cert_reqs" in options
 
 
 def test_request_metrics_middleware_is_idempotent():

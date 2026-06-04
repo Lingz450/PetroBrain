@@ -18,3 +18,9 @@ variable "certificate_arn" {
   type        = string
   default     = ""
 }
+
+variable "cors_allow_origins" {
+  description = "Comma-separated dev browser origins allowed to call the API."
+  type        = string
+  default     = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+}

@@ -28,6 +28,7 @@ from .factors import (
     GWP_SETS,
     MW_CH4,
     MW_CO2,
+    OG_SCOPE3_CATEGORIES,
     TIER2_FUGITIVE_EF_KG_CH4_PER_COMPONENT_HR,
 )
 
@@ -43,9 +44,10 @@ def _lb_to_tonne(lb: float) -> float:
 @dataclass
 class EmissionLine:
     source_id: str
-    source_type: str          # flaring | venting | fugitive | combustion
+    source_type: str          # flaring | venting | fugitive | combustion | purchased_power | scope3_*
     tier: str                 # "Tier 2" | "Tier 3"
     method: str               # human-readable method + factor source (audit)
+    scope: str = "scope_1"    # "scope_1" | "scope_2" | "scope_3" (GHG-Protocol scope)
     ch4_tonnes: float = 0.0
     co2_tonnes: float = 0.0
     n2o_tonnes: float = 0.0
@@ -185,6 +187,82 @@ def combustion(source_id: str, fuel_scf: float,
     )
 
 
+def scope2_purchased_power(
+    source_id: str,
+    mwh: float,
+    grid_emission_factor_kg_co2_per_mwh: float,
+    measured: bool = False,
+) -> EmissionLine:
+    """
+    Scope 2: purchased grid electricity. CO2e = MWh x grid emission factor.
+    The grid factor is jurisdiction-specific (e.g. the Nigerian grid factor) and
+    must be supplied per reporting period from a published source, recorded in the
+    method string for the audit trail.
+    """
+    co2_kg = mwh * grid_emission_factor_kg_co2_per_mwh
+    return EmissionLine(
+        source_id=source_id,
+        source_type="purchased_power",
+        tier="Tier 3" if measured else "Tier 2",
+        method=(
+            f"Scope 2 purchased electricity: {mwh} MWh x "
+            f"{grid_emission_factor_kg_co2_per_mwh} kg CO2/MWh grid factor "
+            f"({'metered consumption' if measured else 'published grid factor'})"
+        ),
+        scope="scope_2",
+        co2_tonnes=co2_kg / KG_PER_TONNE,
+        activity={
+            "mwh": mwh,
+            "grid_emission_factor_kg_co2_per_mwh": grid_emission_factor_kg_co2_per_mwh,
+        },
+    )
+
+
+def scope3_category(
+    source_id: str,
+    category: str,
+    activity_value: float,
+    emission_factor: float,
+    unit: str,
+) -> EmissionLine:
+    """
+    Scope 3: value-chain emissions for an O&G-relevant category (see
+    factors.OG_SCOPE3_CATEGORIES). The biggest line for an operator is normally
+    `use_of_sold_products` - the downstream combustion of the hydrocarbons sold.
+
+    CO2e = activity_value x emission_factor, where emission_factor is kg CO2e per
+    `unit`. Scope-3 factors are already expressed as CO2e, so the value is carried
+    in the CO2 slot (GWP("CO2") = 1.0) to keep totals() and per-line CO2e exact
+    without double-applying a GWP. CH4/N2O remain 0 for these activity-based lines.
+    """
+    if category not in OG_SCOPE3_CATEGORIES:
+        raise ValueError(
+            f"unknown O&G Scope-3 category {category!r}; "
+            f"expected one of {sorted(OG_SCOPE3_CATEGORIES)}"
+        )
+    cat = OG_SCOPE3_CATEGORIES[category]
+    co2e_kg = activity_value * emission_factor
+    return EmissionLine(
+        source_id=source_id,
+        source_type=f"scope3_{category}",
+        tier="Tier 2",  # Scope 3 is inherently an activity-based estimate
+        method=(
+            f"Scope 3 Cat {cat['ghg_protocol_category']} ({cat['label']}): "
+            f"{activity_value} {unit} x {emission_factor} kg CO2e/{unit} "
+            "(activity-based estimate)"
+        ),
+        scope="scope_3",
+        co2_tonnes=co2e_kg / KG_PER_TONNE,
+        activity={
+            "category": category,
+            "ghg_protocol_category": cat["ghg_protocol_category"],
+            "activity_value": activity_value,
+            "emission_factor": emission_factor,
+            "unit": unit,
+        },
+    )
+
+
 @dataclass
 class Inventory:
     facility_id: str
@@ -220,6 +298,17 @@ class Inventory:
             out[l.tier] = out.get(l.tier, 0) + 1
         return out
 
+    def scope_summary(self) -> dict[str, float]:
+        """CO2e tonnes per GHG-Protocol scope, using the inventory's GWP set.
+        Always returns all three scopes (0.0 if absent) so reports have a stable shape.
+        The three values sum to totals()["co2e_tonnes"]."""
+        gwp = GWP_SETS[self.gwp_set]
+        out: dict[str, float] = {"scope_1": 0.0, "scope_2": 0.0, "scope_3": 0.0}
+        for l in self.lines:
+            co2e = l.co2_tonnes * gwp["CO2"] + l.ch4_tonnes * gwp["CH4"] + l.n2o_tonnes * gwp["N2O"]
+            out[l.scope] = out.get(l.scope, 0.0) + co2e
+        return {k: round(v, 3) for k, v in out.items()}
+
     def as_dict(self) -> dict[str, Any]:
         gwp = GWP_SETS[self.gwp_set]
         lines = []
@@ -245,3 +334,145 @@ def build_inventory(facility_id: str, period: str, lines: list[EmissionLine],
     if gwp_set not in GWP_SETS:
         raise ValueError(f"unknown GWP set {gwp_set}")
     return Inventory(facility_id=facility_id, period=period, gwp_set=gwp_set, lines=lines)
+
+
+DEFAULT_MATERIAL_VARIANCE_PCT = 20.0
+
+
+def reconcile_flaring(
+    reported_inventory_line: Any,
+    satellite_observations: Any,
+    material_threshold_pct: float = DEFAULT_MATERIAL_VARIANCE_PCT,
+) -> dict[str, Any]:
+    """
+    Cross-reference a REPORTED flaring line against independent satellite
+    observation (e.g. VIIRS Nightfire flared-volume detections).
+
+    `reported_inventory_line` is a flaring EmissionLine (or its as_dict()); the
+    reported volume is read from activity["gas_volume_scf"].
+
+    `satellite_observations` may be a ProviderResult (or its as_dict()), a plain
+    list of observation dicts, or None. Observations are summed on the comparable
+    quantity `flared_volume_scf`.
+
+    HONESTY: if the satellite source is unavailable the result says so and computes
+    no variance. Zero detections across a window the source DID cover is a genuine
+    observation of ~0 (distinct from "unavailable"). A detection without a derivable
+    volume is counted but not summed, and that is stated.
+    """
+    source_type = _line_attr(reported_inventory_line, "source_type")
+    if source_type != "flaring":
+        raise ValueError(
+            f"reconcile_flaring expects a flaring line, got source_type={source_type!r}"
+        )
+    source_id = _line_attr(reported_inventory_line, "source_id")
+    activity = _line_attr(reported_inventory_line, "activity") or {}
+    reported_scf = activity.get("gas_volume_scf")
+    reported_scf = float(reported_scf) if reported_scf is not None else None
+
+    available, reason, observations, provider = _normalize_observations(satellite_observations)
+
+    result: dict[str, Any] = {
+        "source_id": source_id,
+        "source_type": "flaring",
+        "provider": provider,
+        "reported_flared_scf": round(reported_scf, 2) if reported_scf is not None else None,
+        "reconciliation_available": available,
+        "unavailable_reason": reason,
+        "observed_flared_scf": None,
+        "variance_pct": None,
+        "observed_exceeds_reported": False,
+        "material_threshold_pct": material_threshold_pct,
+        "n_observations": len(observations),
+        "notes": [],
+    }
+
+    if not available:
+        result["notes"].append(
+            "Satellite flaring data unavailable for this source/period - no variance "
+            "computed. " + (reason or "")
+        )
+        return result
+
+    observed_scf, observed_notes = _sum_observed_flared_scf(observations)
+    result["notes"].extend(observed_notes)
+    result["observed_flared_scf"] = round(observed_scf, 2) if observed_scf is not None else None
+
+    if reported_scf is None:
+        result["notes"].append("Reported line carries no flared volume; cannot compute variance.")
+        return result
+    if observed_scf is None:
+        return result
+
+    if reported_scf > 0:
+        result["variance_pct"] = round((observed_scf - reported_scf) / reported_scf * 100, 2)
+        result["observed_exceeds_reported"] = observed_scf > reported_scf * (1 + material_threshold_pct / 100)
+    else:
+        # Reported zero with any observed flaring is, itself, a material discrepancy.
+        result["observed_exceeds_reported"] = observed_scf > 0
+        if observed_scf > 0:
+            result["notes"].append(
+                "Reported flared volume is zero but flaring was observed - material discrepancy."
+            )
+
+    if result["observed_exceeds_reported"]:
+        result["notes"].append(
+            "Observed flaring materially exceeds reported - investigate metering/reporting "
+            "coverage for this source."
+        )
+    return result
+
+
+def _sum_observed_flared_scf(observations: list[dict[str, Any]]) -> tuple[float | None, list[str]]:
+    """Sum the comparable flared-volume quantity across observations.
+
+    Returns (observed_scf, notes). 0.0 = covered window with no detections;
+    None = detections present but none carry a derivable volume."""
+    notes: list[str] = []
+    n_obs = len(observations)
+    if n_obs == 0:
+        notes.append("No flaring detections in the observation window (observed ~0).")
+        return 0.0, notes
+    present = [
+        float(o["flared_volume_scf"])
+        for o in observations
+        if isinstance(o, dict) and o.get("flared_volume_scf") is not None
+    ]
+    if not present:
+        notes.append(
+            "Flaring detected but no flared volume derivable from the data; cannot "
+            "quantify a volume variance."
+        )
+        return None, notes
+    if len(present) < n_obs:
+        notes.append(
+            f"{n_obs - len(present)} of {n_obs} detection(s) had no derivable flared "
+            "volume; observed total is a lower bound."
+        )
+    return sum(present), notes
+
+
+def _line_attr(line: Any, name: str) -> Any:
+    if isinstance(line, dict):
+        return line.get(name)
+    return getattr(line, name, None)
+
+
+def _normalize_observations(obs: Any) -> tuple[bool, str | None, list[dict[str, Any]], str | None]:
+    """Coerce a ProviderResult / dict / list / None into
+    (available, unavailable_reason, observations, provider)."""
+    if obs is None:
+        return False, "no satellite observations supplied", [], None
+    if isinstance(obs, list):
+        return True, None, obs, None
+    if hasattr(obs, "as_dict"):
+        obs = obs.as_dict()
+    if isinstance(obs, dict):
+        available = bool(obs.get("available", True))
+        return (
+            available,
+            obs.get("unavailable_reason"),
+            list(obs.get("observations") or []),
+            obs.get("provider"),
+        )
+    return False, f"unrecognized satellite observation payload: {type(obs).__name__}", [], None

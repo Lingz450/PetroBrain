@@ -28,9 +28,9 @@ x-app-env: &app_env
   PB_EMBEDDING_MODEL: ${PB_EMBEDDING_MODEL:-petrobrain-local}
   PB_PERSISTENCE_BACKEND: postgres
   PB_DATABASE_URL: postgresql+asyncpg://petrobrain:${POSTGRES_PASSWORD:-petrobrain}@db:5432/petrobrain
-  PB_REDIS_URL: redis://redis:6379/0
-  PB_CELERY_BROKER_URL: redis://redis:6379/1
-  PB_CELERY_RESULT_BACKEND: redis://redis:6379/2
+  PB_REDIS_URL: redis://:${REDIS_PASSWORD:-petrobrain-redis-change-me}@redis:6379/0
+  PB_CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-petrobrain-redis-change-me}@redis:6379/1
+  PB_CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-petrobrain-redis-change-me}@redis:6379/2
   PB_OBJECT_STORE_BACKEND: s3
   PB_OBJECT_STORE_ENDPOINT: http://minio:9000
   PB_OBJECT_STORE_REGION: ${PB_OBJECT_STORE_REGION:-af-south-1}
@@ -42,6 +42,10 @@ x-app-env: &app_env
   PB_OTEL_ENDPOINT: ${PB_OTEL_ENDPOINT:-}
   PB_SOVEREIGN_REGION: ${PB_SOVEREIGN_REGION:-af-south-1}
   PB_LOG_JSON: "true"
+  PB_MALWARE_SCAN_ENABLED: "true"
+  PB_MALWARE_SCAN_FAIL_CLOSED: "true"
+  PB_MALWARE_SCAN_HOST: clamav
+  PB_MALWARE_SCAN_PORT: "3310"
 
 services:
   api:
@@ -53,6 +57,7 @@ services:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
+      clamav: { condition: service_healthy }
       vllm: { condition: service_started }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -97,13 +102,26 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-petrobrain-redis-change-me}
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-petrobrain-redis-change-me}"]
     volumes: ["redisdata:/data"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD:-petrobrain-redis-change-me}\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav-debian:stable
+    volumes: ["clamavdata:/var/lib/clamav"]
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
     restart: unless-stopped
 
   minio:
@@ -153,4 +171,5 @@ services:
 volumes:
   pgdata:
   redisdata:
+  clamavdata:
   miniodata:

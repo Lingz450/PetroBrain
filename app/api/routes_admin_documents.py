@@ -20,8 +20,10 @@ from pydantic import ValidationError
 
 from app.api.deps import Principal, require_asset_access, require_role
 from app.core.audit import AuditEvent, get_audit_logger
+from app.config import get_settings
 from app.db.admin_document_repository import get_admin_document_repository
 from app.models.schemas import AdminDocumentMetadata
+from app.security.malware import MalwareDetected, MalwareScanUnavailable, scan_bytes
 from app.storage.object_store import get_object_store, object_key_for
 from app.workers.extractors import supported_extension
 from app.workers.ingest_worker import ingest_document_task
@@ -56,6 +58,8 @@ async def upload_document(
         raise HTTPException(status_code=422, detail="uploaded file is empty")
     if len(body) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="uploaded file exceeds 50 MiB limit")
+    _validate_file_signature(filename, body)
+    _scan_upload(filename, body)
 
     repo = _repository()
     object_store = _object_store()
@@ -130,6 +134,34 @@ def _parse_metadata(raw: str) -> AdminDocumentMetadata:
         return AdminDocumentMetadata(**payload)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+
+def _validate_file_signature(filename: str, body: bytes) -> None:
+    lower = filename.lower()
+    if lower.endswith(".pdf") and not body.startswith(b"%PDF-"):
+        raise HTTPException(status_code=422, detail="uploaded PDF has an invalid file signature")
+    if lower.endswith(".docx") and not body.startswith(b"PK\x03\x04"):
+        raise HTTPException(status_code=422, detail="uploaded DOCX has an invalid file signature")
+    if lower.endswith((".txt", ".md", ".markdown")) and b"\x00" in body[:4096]:
+        raise HTTPException(status_code=422, detail="uploaded text file appears to be binary")
+
+
+def _scan_upload(filename: str, body: bytes) -> None:
+    settings = get_settings()
+    try:
+        scan_bytes(filename, body, settings)
+    except MalwareDetected as exc:
+        raise HTTPException(status_code=422, detail=f"malware detected: {exc}") from exc
+    except MalwareScanUnavailable as exc:
+        if settings.malware_scan_fail_closed:
+            raise HTTPException(status_code=503, detail="malware scanner unavailable") from exc
+        audit_logger.write(AuditEvent(
+            event_type="admin_document_malware_scan_unavailable",
+            route="/admin/documents",
+            request={"filename": filename},
+            error={"status_code": 503, "detail": str(exc)},
+            flags=["malware_scan_unavailable"],
+        ))
 
 
 def _to_status(record: dict[str, Any]) -> dict[str, Any]:

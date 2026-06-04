@@ -220,6 +220,7 @@ export function ChatClient() {
         text: '',
         citations: [],
         toolResults: [],
+        evidencePack: null,
         flags: [],
         streaming: true,
         createdAt: Date.now(),
@@ -667,6 +668,7 @@ export function applyEvent(
           ...m,
           text: event.data.answer || m.text,
           toolResults: (event.data.tool_results as ToolResult[]) ?? m.toolResults,
+          evidencePack: event.data.evidence_pack ?? m.evidencePack,
           flags: event.data.flags ?? m.flags,
           streaming: false,
         };

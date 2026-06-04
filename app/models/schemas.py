@@ -49,6 +49,7 @@ class ChatResponse(BaseModel):
     tool_results: list[dict[str, Any]] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_pack: dict[str, Any] = Field(default_factory=dict)
 
 
 class KillSheetRequest(BaseModel):

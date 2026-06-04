@@ -10,9 +10,16 @@ output "redis_primary_endpoint" {
   value = aws_elasticache_replication_group.this.primary_endpoint_address
 }
 
-output "redis_url" {
-  description = "Base redis:// URL (db 0). Broker/result append /1 and /2."
-  value       = "redis://${aws_elasticache_replication_group.this.primary_endpoint_address}:6379"
+output "redis_url_secret_arn" {
+  value = aws_secretsmanager_secret.redis_url.arn
+}
+
+output "celery_broker_url_secret_arn" {
+  value = aws_secretsmanager_secret.celery_broker_url.arn
+}
+
+output "celery_result_backend_secret_arn" {
+  value = aws_secretsmanager_secret.celery_result_backend.arn
 }
 
 output "bucket_id" {

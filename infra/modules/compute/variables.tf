@@ -96,6 +96,11 @@ variable "otel_image" {
   default = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
 }
 
+variable "clamav_image" {
+  type    = string
+  default = "clamav/clamav-debian:stable"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

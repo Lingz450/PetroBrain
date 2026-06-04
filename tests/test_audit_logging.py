@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.api import deps
 from app.api import routes_chat, routes_documents, routes_emissions, routes_wellcontrol
-from app.core.audit import AuditLogger
+from app.core.audit import AuditEvent, AuditLogger
 from app.db.document_repository import LocalJsonDocumentRepository
 from app.main import app
 from tests.auth_helpers import auth_headers, jwt_settings
@@ -105,8 +105,29 @@ def test_chat_guardrail_response_is_audited(monkeypatch, tmp_path):
     assert event["user_id"] == "u1"
     assert event["route"] == "/chat"
     assert event["flags"] == ["safety_bypass"]
-    assert "bypass the ESD" in event["request"]["message"]
-    assert "can't help" in event["response"]["answer"]
+    assert event["request"]["request_hash"]
+    assert event["response"]["response_hash"]
+    assert "bypass the ESD" not in json.dumps(event)
+    assert "can't help" not in json.dumps(event)
+
+
+def test_audit_logger_redacts_sensitive_keys(tmp_path):
+    logger = AuditLogger(tmp_path / "audit.jsonl")
+    logger.write(AuditEvent(
+        event_type="sensitive",
+        tenant_id="tenant-a",
+        user_id="u1",
+        role="admin",
+        route="/test",
+        request={"password": "plain", "authorization": "Bearer abc"},
+        response={"password_hash": "$2b$hash", "nested": {"api_key": "sk-test"}},
+    ))
+
+    [event] = read_events(logger)
+    assert event["request"]["password"] == "[REDACTED]"
+    assert event["request"]["authorization"] == "[REDACTED]"
+    assert event["response"]["password_hash"] == "[REDACTED]"
+    assert event["response"]["nested"]["api_key"] == "[REDACTED]"
 
 
 def test_kill_sheet_success_is_audited(monkeypatch, tmp_path):

@@ -635,17 +635,17 @@ export function SettingsClient() {
                   label="API base URL"
                   description="Where the chat surface posts to. Read-only - set via the host."
                 >
-                  <code className="block truncate rounded-xl border border-neutral-100 bg-neutral-50/60 px-3 py-2 text-xs text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-200">
+                  <span className="inline-flex rounded-xl border border-neutral-100 bg-neutral-50/60 px-3 py-2 text-xs font-medium text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-200">
                     {apiBaseUrl}
-                  </code>
+                  </span>
                 </Field>
                 <Field
-                  label="JWT preview"
-                  description="Token last bytes - useful when diagnosing auth issues."
+                  label="Session"
+                  description="Your browser has an active sign-in session."
                 >
-                  <code className="block truncate rounded-xl border border-neutral-100 bg-neutral-50/60 px-3 py-2 text-xs text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-200">
-                    …{(token ?? '').slice(-12)}
-                  </code>
+                  <span className="inline-flex rounded-xl border border-neutral-100 bg-neutral-50/60 px-3 py-2 text-xs font-medium text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-200">
+                    Signed in
+                  </span>
                 </Field>
                 <Field label="Sign out" description="Clears the JWT from this browser session.">
                   <div className="flex justify-end">

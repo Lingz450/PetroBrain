@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
@@ -24,10 +24,17 @@ from app.api import (
     routes_emissions,
     routes_wellcontrol,
 )
-from app.config import get_settings
+from app.config import get_settings, validate_production_settings
+from app.core.http_hardening import (
+    add_security_headers,
+    check_rate_limit,
+    rate_limit_key,
+    verify_metrics_access,
+)
 from app.core.observability import metrics_response, setup_observability
 
 settings = get_settings()
+validate_production_settings(settings)
 app = FastAPI(title=settings.app_name, version="0.1.0")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -45,6 +52,20 @@ app.add_middleware(
 )
 
 setup_observability(app, settings)
+
+
+@app.middleware("http")
+async def hardening_middleware(request: Request, call_next):
+    limit = rate_limit_key(request, settings)
+    if limit is not None:
+        try:
+            check_rate_limit(*limit)
+        except HTTPException as exc:
+            return add_security_headers(
+                JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+            )
+    response = await call_next(request)
+    return add_security_headers(response)
 
 app.include_router(routes_auth.router)
 app.include_router(routes_chat.router)
@@ -71,9 +92,14 @@ async def index():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "app": settings.app_name, "tier": "B" if settings.operational_tier else "A"}
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "tier": "B" if settings.operational_tier else "A",
+    }
 
 
 @app.get("/metrics", include_in_schema=False)
-async def metrics():
+async def metrics(request: Request):
+    verify_metrics_access(request, settings)
     return metrics_response()

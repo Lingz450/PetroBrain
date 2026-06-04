@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.api import deps, routes_admin_documents
@@ -70,6 +71,7 @@ def wire(monkeypatch, admin_repo, memory_store, fake_vectorstore):
     # Route + worker share the same in-process repo + object store.
     monkeypatch.setattr(routes_admin_documents, "_repository", lambda: admin_repo)
     monkeypatch.setattr(routes_admin_documents, "_object_store", lambda: memory_store)
+    monkeypatch.setattr(routes_admin_documents, "_scan_upload", lambda filename, body: None)
     monkeypatch.setattr(ingest_worker, "_get_repository", lambda: admin_repo)
     monkeypatch.setattr(ingest_worker, "_get_object_store", lambda: memory_store)
     monkeypatch.setattr(ingest_worker, "_get_embedder", lambda: _FakeEmbedder())
@@ -186,6 +188,46 @@ def test_admin_upload_rejects_unsupported_extension():
     )
     assert r.status_code == 422
     assert "unsupported" in r.json()["detail"].lower()
+
+
+def test_admin_upload_rejects_spoofed_pdf_signature():
+    r = client.post(
+        "/admin/documents",
+        headers=_admin_headers(),
+        data={"metadata": json.dumps(_payload())},
+        files={"file": ("kick.pdf", b"not really a pdf", "application/pdf")},
+    )
+    assert r.status_code == 422
+    assert "signature" in r.json()["detail"].lower()
+
+
+def test_admin_upload_rejects_binary_text_file():
+    r = client.post(
+        "/admin/documents",
+        headers=_admin_headers(),
+        data={"metadata": json.dumps(_payload())},
+        files={"file": ("kick.md", b"# ok\n\x00binary", "text/markdown")},
+    )
+    assert r.status_code == 422
+    assert "binary" in r.json()["detail"].lower()
+
+
+def test_admin_upload_rejects_malware(monkeypatch, memory_store):
+    def _infected(filename, body):
+        raise HTTPException(status_code=422, detail="malware detected: Eicar-Test-Signature")
+
+    monkeypatch.setattr(routes_admin_documents, "_scan_upload", _infected)
+
+    r = client.post(
+        "/admin/documents",
+        headers=_admin_headers(),
+        data={"metadata": json.dumps(_payload())},
+        files={"file": ("kick.md", _KICK_MD.encode("utf-8"), "text/markdown")},
+    )
+
+    assert r.status_code == 422
+    assert "malware detected" in r.json()["detail"]
+    assert memory_store._items == {}
 
 
 def test_admin_upload_rejects_empty_file():

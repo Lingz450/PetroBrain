@@ -10,44 +10,21 @@ export interface WorkingPanelProps {
   defaultOpen?: boolean;
 }
 
-/**
- * Collapsible per-tool detail. Renders, in order: a row of headline numbers
- * from the result (everything that's not an array / object / banner), then
- * the working steps array, then the raw input + result as JSON for
- * engineers who want to audit a specific line.
- *
- * Stays expanded by default for safety-critical tools (kill_sheet,
- * MAASP …) so the working is not hidden behind a click.
- */
-export function WorkingPanel({ tool, input, result, defaultOpen = false }: WorkingPanelProps) {
+export function WorkingPanel({ tool, result, defaultOpen = false }: WorkingPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
 
-  // Web search is an information-retrieval tool; the sources footer already
-  // shows the citation set, so the working trace just needs a one-line
-  // confirmation that the search ran with the model's query. No headline
-  // numbers, no raw JSON dump - that's noise for the user, the audit log
-  // keeps the full payload for engineering.
   if (tool === 'web_search') {
-    const query = isObject(input) && typeof input['query'] === 'string'
-      ? input['query']
-      : null;
     const count = isObject(result) && Array.isArray(result['results'])
       ? result['results'].length
       : null;
     return (
       <div className="inline-flex flex-wrap items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-        <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[11px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-          web_search
-        </code>
-        {query ? (
-          <span className="truncate" title={query}>
-            <span className="text-neutral-400 dark:text-neutral-500">query:</span>{' '}
-            <span className="text-neutral-700 dark:text-neutral-300">{query}</span>
-          </span>
-        ) : null}
+        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+          Checked current sources
+        </span>
         {count !== null ? (
           <span className="text-neutral-400 dark:text-neutral-500">
-            · {count} result{count === 1 ? '' : 's'}
+            - {count} result{count === 1 ? '' : 's'}
           </span>
         ) : null}
       </div>
@@ -76,14 +53,13 @@ export function WorkingPanel({ tool, input, result, defaultOpen = false }: Worki
             strokeLinejoin="round"
           />
         </svg>
-        <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[11px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-          {tool}
-        </code>
+        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+          {userSafeToolLabel(tool)}
+        </span>
       </summary>
       <div className="mt-2 space-y-3">
         <HeadlineNumbers result={result} />
         <Steps result={result} />
-        <RawBlocks tool={tool} input={input} result={result} />
       </div>
     </details>
   );
@@ -103,7 +79,9 @@ function HeadlineNumbers({ result }: { result: unknown }) {
     <dl className="grid grid-cols-2 gap-2 text-xs">
       {entries.map(([k, v]) => (
         <div key={k} className="rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
-          <dt className="font-mono text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{k}</dt>
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            {humanizeKey(k)}
+          </dt>
           <dd className="font-semibold text-neutral-800 dark:text-neutral-100">{String(v)}</dd>
         </div>
       ))}
@@ -118,7 +96,7 @@ function Steps({ result }: { result: unknown }) {
   return (
     <ol className={clsx('list-decimal space-y-1 pl-5 text-xs text-neutral-700 dark:text-neutral-300')}>
       {working.map((step, i) => (
-        <li key={i} className="font-mono">
+        <li key={i}>
           {typeof step === 'string' ? step : JSON.stringify(step)}
         </li>
       ))}
@@ -126,26 +104,32 @@ function Steps({ result }: { result: unknown }) {
   );
 }
 
-function RawBlocks({ tool, input, result }: { tool: string; input: unknown; result: unknown }) {
-  return (
-    <div className="grid gap-2 md:grid-cols-2">
-      <RawBlock label={`${tool} input`} value={input} />
-      <RawBlock label={`${tool} result`} value={result} />
-    </div>
-  );
-}
-
-function RawBlock({ label, value }: { label: string; value: unknown }) {
-  return (
-    <details className="rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
-      <summary className="cursor-pointer px-2 py-1 text-xs text-neutral-600 dark:text-neutral-400">{label}</summary>
-      <pre className="overflow-x-auto px-2 pb-2 text-[11px] text-neutral-700 dark:text-neutral-300">
-        {value === undefined ? '(none)' : JSON.stringify(value, null, 2)}
-      </pre>
-    </details>
-  );
-}
-
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+export function userSafeToolLabel(tool: string): string {
+  const labels: Record<string, string> = {
+    web_search: 'Checked current sources',
+    build_kill_sheet: 'Built kill sheet',
+    build_ptw_template: 'Built permit template',
+    build_ghgemp_report: 'Built GHGEMP report',
+    build_report: 'Built report',
+    flaring_emissions: 'Calculated flaring emissions',
+    venting_emissions: 'Calculated venting emissions',
+    fugitive_tier2: 'Estimated fugitive emissions',
+    fugitive_tier3: 'Estimated fugitive emissions',
+    combustion_emissions: 'Calculated combustion emissions',
+    reconcile_flaring: 'Reconciled flaring data',
+    model_abatement: 'Modeled abatement options',
+  };
+  return labels[tool] ?? 'Checked supporting information';
+}
+
+function humanizeKey(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (m) => m.toUpperCase())
+    .replace(/\bPpg\b/g, 'ppg')
+    .replace(/\bPsi\b/g, 'psi');
 }

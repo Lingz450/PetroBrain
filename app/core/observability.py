@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from app.config import Settings, get_settings
+from app.core.redis_security import redis_ssl_options
 
 
 HTTP_REQUESTS = Counter(
@@ -205,6 +206,7 @@ def increment_token_cost_counters(
             socket_connect_timeout=0.05,
             socket_timeout=0.05,
             decode_responses=True,
+            **redis_ssl_options(s.redis_url, s),
         )
         pipe = client.pipeline()
         pipe.hincrby(f"petrobrain:tokens:{tenant_id}", module, total)
