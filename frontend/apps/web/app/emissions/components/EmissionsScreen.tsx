@@ -159,7 +159,7 @@ export function EmissionsScreen() {
             <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading inventory…</p>
           ) : detailQuery.isError ? (
             <p role="alert" className="rounded-md border border-danger-border bg-danger-bg p-3 text-sm text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
-              Could not load inventory detail.
+              Could not load the selected inventory. Refresh the page, then try again.
             </p>
           ) : viewerResponse ? (
             <InventoryViewer response={viewerResponse} />

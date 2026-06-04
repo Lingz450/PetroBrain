@@ -232,8 +232,8 @@ export function InventoryBuilder({
         ) : null}
 
         {error ? (
-          <Banner tone="danger" title="Backend rejected the request">
-            {error}
+          <Banner tone="danger" title="Could not generate report">
+            Review the facility details and source measurements, then try again.
           </Banner>
         ) : null}
 

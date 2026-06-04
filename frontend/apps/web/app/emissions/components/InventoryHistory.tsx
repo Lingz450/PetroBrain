@@ -18,7 +18,7 @@ export function InventoryHistory({ rows, selectedId, onSelect, isLoading, isErro
   if (isError) {
     return (
       <p role="alert" className="rounded-md border border-danger-border bg-danger-bg p-3 text-sm text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
-        Could not load inventories. Check your sign-in and the API base URL.
+        Could not load inventories. Refresh the page or sign in again, then try once more.
       </p>
     );
   }
