@@ -25,6 +25,19 @@ from app.core.evidence import build_evidence_pack
 from app.core.guardrails import post_check, pre_check
 from app.core.llm_service import LLMConfigurationError, LLMService
 from app.core.prompts import build_system_prompt
+
+
+def _tenant_memories_for(tenant_id: str) -> list[str]:
+    """Load active memory bodies for a tenant, sorted oldest-first. Returns
+    an empty list on any read error so a misconfigured memory store can never
+    block a chat turn. Slice 2 of the learning loop."""
+    if not tenant_id:
+        return []
+    try:
+        from app.db.tenant_memory_repository import get_tenant_memory_repository
+        return get_tenant_memory_repository().list_for_prompt(tenant_id=tenant_id)
+    except Exception:  # noqa: BLE001 - never let memory failures break chat
+        return []
 from app.modules.emissions_mrv.agent import (
     BUILD_GHGEMP_REPORT_TOOL,
     BUILD_REPORT_TOOL,
@@ -399,6 +412,7 @@ class Orchestrator:
             module=module, user_role=user_role, jurisdiction=jurisdiction,
             asset_context=prompt_asset_context, retrieved_context=retrieved_text or None,
             offline_mode=offline_mode, has_attachments=has_attachments,
+            tenant_memories=_tenant_memories_for(tenant_id),
         )
 
         # 4. LLM + tools
@@ -643,6 +657,7 @@ class Orchestrator:
             module=module, user_role=user_role, jurisdiction=jurisdiction,
             asset_context=prompt_asset_context, retrieved_context=retrieved_text or None,
             offline_mode=offline_mode, has_attachments=has_attachments,
+            tenant_memories=_tenant_memories_for(tenant_id),
         )
         tools = [TOOL_REGISTRY[t][0] for t in _tools_for(module, disable_web_search)]
         user_content = _build_user_message_content(user_text, attachments)

@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     permits_store_path: str = "data/permits.jsonl"
     conversation_shares_store_path: str = "data/conversation_shares.jsonl"
     feedback_store_path: str = "data/feedback_events.jsonl"
+    tenant_memory_store_path: str = "data/tenant_memories.jsonl"
+    # Hard ceiling on memories injected into a single chat turn. Past this we
+    # silently drop the oldest active rows from the prompt - the row still
+    # exists in the DB, the admin should archive deliberately.
+    tenant_memory_max_active: int = 20
+    tenant_memory_max_total_chars: int = 2000
 
     # Async document ingestion (A5)
     object_store_backend: str = "s3"             # s3 (MinIO/AWS) | memory (tests)

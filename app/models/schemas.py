@@ -72,6 +72,22 @@ class FeedbackResponse(BaseModel):
     created_utc: str
 
 
+class MemoryCreate(BaseModel):
+    body: str = Field(min_length=3, max_length=280)
+    kind: str = "preference"  # terminology | preference | context
+
+
+class MemoryUpdate(BaseModel):
+    body: str | None = Field(default=None, max_length=280)
+    kind: str | None = None
+    status: str | None = None  # active | archived
+
+
+class PromoteFeedbackToMemory(BaseModel):
+    body: str = Field(min_length=3, max_length=280)
+    kind: str = "preference"
+
+
 class KillSheetRequest(BaseModel):
     tvd_ft: float; md_ft: float; omw_ppg: float
     sidpp_psi: float; sicp_psi: float; pit_gain_bbl: float
