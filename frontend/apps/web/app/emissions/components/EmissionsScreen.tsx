@@ -17,6 +17,7 @@ import type {
 } from '@/lib/emissions/types';
 
 import { HistoryFilters, applyHistoryFilters, type HistoryFilterState } from './HistoryFilters';
+import { CarbonCalculator } from './CarbonCalculator';
 import { InventoryBuilder } from './InventoryBuilder';
 import { InventoryHistory } from './InventoryHistory';
 import { InventoryViewer } from './InventoryViewer';
@@ -121,6 +122,8 @@ export function EmissionsScreen() {
           {composerOpen ? 'Close composer' : 'New inventory'}
         </Button>
       </header>
+
+      <CarbonCalculator />
 
       {composerOpen ? (
         <InventoryBuilder
