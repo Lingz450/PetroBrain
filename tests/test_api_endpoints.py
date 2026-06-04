@@ -95,7 +95,45 @@ def emissions_payload() -> dict:
 def test_health_is_public():
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json()["status"] == "ok"
+    body = r.json()
+    assert body["status"] == "ok"
+    # /health surfaces whether this deploy is ephemeral so clients can banner.
+    assert "demo" in body
+    assert "environment" in body
+
+
+def test_demo_environment_surfaces_warning(monkeypatch):
+    """In demo mode /health must return demo=true + a user-facing warning so
+    the web app can render a banner instead of letting prospects think the
+    instance is production."""
+    from app import main as main_module
+    monkeypatch.setattr(main_module.settings, "environment", "demo", raising=False)
+    r = client.get("/health")
+    body = r.json()
+    assert body["demo"] is True
+    assert "DEMO" in (body["warning"] or "")
+
+
+def test_demo_environment_refuses_admin_uploads(monkeypatch):
+    """If we let demo uploads succeed, the doc is silently lost on the next
+    restart because the object store is in-memory. Refuse with 410 instead."""
+    from app import main as main_module
+    monkeypatch.setattr(
+        main_module.settings, "object_store_backend", "memory", raising=False,
+    )
+    # patch the per-route settings reader too
+    from app.api import routes_admin_documents as rad
+    monkeypatch.setattr(rad, "get_settings", lambda: main_module.settings)
+
+    from tests.auth_helpers import auth_headers as _ah
+    r = client.post(
+        "/admin/documents",
+        headers=_ah(role="admin"),
+        data={"metadata": '{"document_id":"d","title":"t","asset":"Asset-A"}'},
+        files={"file": ("x.txt", b"hello", "text/plain")},
+    )
+    assert r.status_code == 410, r.text
+    assert "demo" in r.json()["detail"].lower()
 
 
 def test_auth_required_for_module_endpoints():

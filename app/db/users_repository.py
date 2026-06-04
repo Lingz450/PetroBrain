@@ -104,6 +104,17 @@ class LocalJsonUsersRepository:
                 return row
         return None
 
+    def find_by_email_any_tenant(self, email: str) -> dict[str, Any] | None:
+        """Locate a user by email across all tenants. Used by the Neon SSO
+        path, which knows the email but not the tenant. Returns the first
+        active match; collisions across tenants are a tenant-admin problem
+        (the same email shouldn't sign in to two tenants at once)."""
+        needle = email.strip().lower()
+        for row in self._read_all():
+            if row["email"].lower() == needle and row.get("status") == "active":
+                return row
+        return None
+
     def signup(self, *, tenant_id: str, email: str, role: str,
                password_hash: str,
                allowed_assets: list[str] | None = None,
@@ -294,6 +305,19 @@ class PostgresUsersRepository:
             ).fetchone()
         return _serialize_row(row) if row else None
 
+    def find_by_email_any_tenant(self, email: str) -> dict[str, Any] | None:
+        """Cross-tenant email lookup for the Neon SSO path. Runs under the
+        platform-admin GUC ('*') because the caller doesn't yet know the
+        tenant - the result IS what supplies tenant_id to the Principal."""
+        with pg_tenant(PLATFORM_ADMIN_TENANT, self.dsn) as conn:
+            row = conn.execute(
+                f"SELECT {_USER_COLUMNS} FROM users "
+                f"WHERE lower(email) = lower(%s) AND status = 'active' "
+                f"LIMIT 1",
+                (email.strip(),),
+            ).fetchone()
+        return _serialize_row(row) if row else None
+
     def signup(self, *, tenant_id: str, email: str, role: str,
                password_hash: str,
                allowed_assets: list[str] | None = None,
@@ -380,6 +404,11 @@ def pg_tenant(tenant_id: str, dsn: str | None):
     from app.db import pg
 
     return pg.tenant_connection(tenant_id, dsn=dsn, dict_rows=True)
+
+
+# Mirror of app.db.pg.PLATFORM_ADMIN_TENANT. Lifted here so this module doesn't
+# pull psycopg at import time on the LocalJson path.
+PLATFORM_ADMIN_TENANT = "*"
 
 
 def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:

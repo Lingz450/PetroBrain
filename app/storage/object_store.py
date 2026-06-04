@@ -111,9 +111,29 @@ def reset_object_store_cache() -> None:
     _cached_object_store.cache_clear()
 
 
+_UNSAFE_FILENAME_CHARS = set(
+    "‮"  # RIGHT-TO-LEFT OVERRIDE - flips on-screen rendering
+    "‭"  # LEFT-TO-RIGHT OVERRIDE
+    "​"  # ZERO WIDTH SPACE
+    "‌"  # ZERO WIDTH NON-JOINER
+    "‍"  # ZERO WIDTH JOINER
+    "﻿"  # ZERO WIDTH NO-BREAK SPACE (BOM)
+)
+
+
 def object_key_for(*, tenant_id: str, ingest_id: str, filename: str) -> str:
     if not tenant_id or not ingest_id or not filename:
         raise ValueError("tenant_id, ingest_id, filename are required for object_key_for")
     # Sanitize: keep last path segment only - clients sometimes send full paths.
     safe_name = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    # Strip C0/C1 control chars and a small allow-deny set of unicode tricks
+    # that survive into the audit log and the S3 console as confusing names.
+    safe_name = "".join(
+        ch for ch in safe_name
+        if ch not in _UNSAFE_FILENAME_CHARS
+        and (ord(ch) >= 0x20 or ch in {"\t"})
+        and ord(ch) != 0x7F
+    ).strip()
+    if not safe_name:
+        safe_name = "upload"
     return f"tenants/{tenant_id}/documents/{ingest_id}/{safe_name}"

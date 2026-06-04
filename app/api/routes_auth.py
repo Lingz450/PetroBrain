@@ -15,13 +15,15 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.deps import VALID_ROLES
+from app.api.deps import Principal, VALID_ROLES, get_principal
 from app.config import get_settings
 from app.core.audit import AuditEvent, get_audit_logger
+from app.core import auth_lockout
 from app.core.auth import hash_password, mint_jwt, verify_password
+from app.core.token_revocation import revoke as revoke_jti
 from app.db.tenants_repository import get_tenants_repository
 from app.db.users_repository import get_users_repository
 
@@ -198,12 +200,26 @@ async def signin(req: SigninRequest) -> AuthResponse:
     # Identical 401 for unknown email vs wrong password vs deactivated account
     # - don't leak which one to the network.
     invalid = HTTPException(status_code=401, detail="invalid email or password")
+
+    # H4: per-account lockout. Reject early if the email is currently locked,
+    # but use the same 401 message and a fixed code path so an attacker can't
+    # tell locked-out from wrong-password by timing or response shape.
+    if auth_lockout.is_locked(tenant_id, req.email):
+        raise invalid
+
     if record is None:
+        # Record a failure even for unknown emails so an attacker can't probe
+        # email existence by watching the lockout response. The bucket is keyed
+        # by (tenant, email) so the cost is bounded.
+        auth_lockout.record_failure(tenant_id, req.email)
         raise invalid
     if record.get("status") != "active":
+        auth_lockout.record_failure(tenant_id, req.email)
         raise invalid
     if not verify_password(req.password, record.get("password_hash")):
+        auth_lockout.record_failure(tenant_id, req.email)
         raise invalid
+    auth_lockout.record_success(tenant_id, req.email)
 
     try:
         users.touch_last_active(tenant_id=tenant_id, user_id=record["id"])
@@ -223,6 +239,43 @@ async def signin(req: SigninRequest) -> AuthResponse:
         metadata={},
     ))
     return AuthResponse(token=token, principal=_to_principal_payload(record))
+
+
+@router.post("/logout", status_code=204)
+async def logout(
+    authorization: str = Header(default=""),
+    who: Principal = Depends(get_principal),
+):
+    """Revoke the current access token's ``jti`` so it stops being accepted
+    immediately, without waiting for ``exp``. Idempotent: replays do nothing.
+
+    Frontend must drop its locally-stored token after a 204 response - the
+    server stops honouring it on the next request either way.
+    """
+    import jwt as _jwt
+    _, _, token = (authorization or "").partition(" ")
+    if not token:
+        return None
+    try:
+        # Already verified by get_principal; here we only need jti + exp.
+        claims = _jwt.decode(token, options={"verify_signature": False})
+    except Exception:  # noqa: BLE001
+        return None
+    jti = claims.get("jti")
+    exp = claims.get("exp")
+    if isinstance(jti, str) and jti and isinstance(exp, (int, float)):
+        revoke_jti(jti, float(exp))
+        audit_logger.write(AuditEvent(
+            event_type="auth_logout",
+            tenant_id=who.tenant_id,
+            user_id=who.user_id,
+            role=who.role,
+            route="/auth/logout",
+            request={"jti": jti},
+            response=None,
+            metadata={},
+        ))
+    return None
 
 
 def looks_like_email(value: str) -> bool:

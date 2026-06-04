@@ -91,12 +91,20 @@ class Settings(BaseSettings):
     token_cost_redis_enabled: bool = False
     metrics_auth_token: str = ""
 
-    # Basic in-process abuse controls. Production edge/WAF limits still apply,
-    # but these protect auth and expensive app routes even on private/internal
-    # deployments or demo hosts without WAF.
+    # Abuse controls. In dev / tests the limiter runs in-process; in prod it
+    # uses Redis so the same bucket is shared across uvicorn workers and ECS
+    # tasks (otherwise the effective ceiling is N x limit). The production
+    # edge/WAF limits still apply as defence in depth.
     auth_rate_limit_per_minute: int = 20
     api_rate_limit_per_minute: int = 120
     upload_rate_limit_per_minute: int = 10
+    # "redis" | "memory". Empty = auto: redis when environment looks like prod,
+    # memory otherwise. Tests force memory via PB_RATE_LIMIT_BACKEND=memory.
+    rate_limit_backend: str = ""
+    # CIDRs allowed to set X-Forwarded-For. Anything from outside this list is
+    # treated as a direct connect and request.client.host wins. Empty = trust
+    # nothing (don't read XFF at all).
+    trusted_proxy_cidrs: str = ""
 
     # Upload malware scanning. Production should point this at clamd TCP/3310
     # and fail closed so documents are never persisted without a clean verdict.
@@ -111,10 +119,24 @@ class Settings(BaseSettings):
     jwt_public_key: str = ""                     # RS256 production/SSO public key
     jwt_issuer: str = "petrobrain"
     jwt_audience: str = "petrobrain-api"
-    jwt_ttl_hours: int = 12
+    # Access-token TTL. Was 12h; shortened so a stolen token's window of use is
+    # at most an hour. The frontend should refresh by re-authenticating until
+    # the refresh-token flow is in place (Phase-2 follow-up). Override per
+    # deployment via PB_JWT_TTL_HOURS if a long-running offline field session
+    # needs a longer window.
+    jwt_ttl_hours: int = 1
+    # Server-side revocation store. "memory" = per-process set (dev/tests),
+    # "redis" = shared across replicas (prod). Empty = auto by environment.
+    jwt_revocation_backend: str = ""
     # Self-serve signup (POST /auth/signup). Disable to lock the app to
     # admin-invited accounts only.
     enable_self_signup: bool = True
+    # External SSO via Neon Auth. Default off: when on, every EdDSA token that
+    # passes JWKS verification is accepted *and* must resolve to a user row in
+    # the local users table by email - otherwise 401. Used to be auto-on (any
+    # signed token => default tenant, "*" assets), which silently broke tenant
+    # isolation for the Neon path. See app/api/deps.py::_neon_principal.
+    neon_auth_enabled: bool = False
     default_signup_tenant_id: str = "demo"
     default_signup_tenant_name: str = "Demo tenant"
     default_signup_role: str = "engineer"
@@ -122,7 +144,16 @@ class Settings(BaseSettings):
     # on first signup. Lets the founder bootstrap admin access without having
     # to edit the user store by hand. Lowercased + stripped before compare.
     bootstrap_platform_admin_emails: str = ""
-    password_min_length: int = 8
+    # NIST 800-63B minimum is 8, but only paired with breach-pw checks and
+    # lockout. We have lockout (below) but not yet HIBP; raising to 12 reduces
+    # the brute-forceable space while we wire that up.
+    password_min_length: int = 12
+    # Per-account brute force lockout. After this many consecutive failed
+    # /auth/signin attempts within auth_lockout_window_minutes, further
+    # attempts for the same email are rejected for auth_lockout_minutes.
+    auth_lockout_max_failures: int = 5
+    auth_lockout_window_minutes: int = 15
+    auth_lockout_minutes: int = 15
 
     # RAG
     embedding_model: str = "text-embedding-3-large"
@@ -169,11 +200,35 @@ def validate_production_settings(settings: Settings) -> None:
         errors.append("PB_PERSISTENCE_BACKEND=local_json is not production-safe")
     if settings.enable_self_signup:
         errors.append("PB_ENABLE_SELF_SIGNUP must be false in production")
+    # M2: if a non-prod staging ever lifts the signup flag, fail before any
+    # real user lands in the shared "demo" tenant. Prod is already blocked
+    # above; this catches staging-with-real-data risk.
+    if (
+        settings.enable_self_signup
+        and settings.default_signup_tenant_id == "demo"
+    ):
+        errors.append(
+            "PB_DEFAULT_SIGNUP_TENANT_ID must not be 'demo' when self-signup is "
+            "enabled in production - all users would share one tenant"
+        )
+    # H5: bootstrap_platform_admin_emails auto-promotes any signup with a
+    # listed email to platform_admin. Useful in dev (founder), dangerous in
+    # prod (race with a deleted account, typo'd email, re-registration).
+    # Block it; provision the first admin via a one-shot DB migration instead.
+    if settings.bootstrap_platform_admin_emails.strip():
+        errors.append(
+            "PB_BOOTSTRAP_PLATFORM_ADMIN_EMAILS must be empty in production "
+            "(provision the first admin via migration, not self-signup)"
+        )
     origins = {o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()}
     if not origins:
         errors.append("PB_CORS_ALLOW_ORIGINS must not be empty in production")
-    if "*" in origins or any("localhost" in o or "127.0.0.1" in o for o in origins):
-        errors.append("PB_CORS_ALLOW_ORIGINS must be a production origin allowlist")
+    for origin in origins:
+        reason = _bad_origin_reason(origin)
+        if reason:
+            errors.append(
+                f"PB_CORS_ALLOW_ORIGINS entry {origin!r} is invalid: {reason}"
+            )
     if settings.object_store_backend == "memory":
         errors.append("PB_OBJECT_STORE_BACKEND=memory is not production-safe")
     if (
@@ -193,12 +248,18 @@ def validate_production_settings(settings: Settings) -> None:
         and _missing_or_placeholder_secret("OPENAI_API_KEY")
     ):
         errors.append("OPENAI_API_KEY must be set to a real provider key in production")
-    if not settings.redis_url.lower().startswith("rediss://"):
-        errors.append("PB_REDIS_URL must use rediss:// in production")
-    if not settings.celery_broker_url.lower().startswith("rediss://"):
-        errors.append("PB_CELERY_BROKER_URL must use rediss:// in production")
-    if not settings.celery_result_backend.lower().startswith("rediss://"):
-        errors.append("PB_CELERY_RESULT_BACKEND must use rediss:// in production")
+    # Tier B runs entirely inside the customer DMZ on a Docker bridge with no
+    # egress (see infra/SECURITY.md). Internal plaintext Redis is acceptable per
+    # IEC 62443-3-3 FR4 when paired with the network isolation Tier B requires.
+    # Tier A (cloud) crosses ElastiCache transit and must use rediss://.
+    require_redis_tls = not settings.operational_tier
+    if require_redis_tls:
+        if not settings.redis_url.lower().startswith("rediss://"):
+            errors.append("PB_REDIS_URL must use rediss:// in production")
+        if not settings.celery_broker_url.lower().startswith("rediss://"):
+            errors.append("PB_CELERY_BROKER_URL must use rediss:// in production")
+        if not settings.celery_result_backend.lower().startswith("rediss://"):
+            errors.append("PB_CELERY_RESULT_BACKEND must use rediss:// in production")
     if not settings.malware_scan_enabled:
         errors.append("PB_MALWARE_SCAN_ENABLED must be true in production")
     if not settings.malware_scan_fail_closed:
@@ -207,6 +268,39 @@ def validate_production_settings(settings: Settings) -> None:
         errors.append("PB_MALWARE_SCAN_HOST is required when malware scanning is enabled")
     if errors:
         raise RuntimeError("Unsafe production configuration: " + "; ".join(errors))
+
+
+def _bad_origin_reason(origin: str) -> str:
+    """Return a short reason string when ``origin`` is not a safe production
+    CORS allow-list entry, or '' if it is. Browsers compare Origin headers
+    exactly (scheme + host + optional port), so each entry must be just that -
+    no wildcards, paths, query strings, fragments, or userinfo. Loopback and
+    private nets aren't valid public origins."""
+    from urllib.parse import urlparse
+
+    raw = (origin or "").strip()
+    if not raw or raw == "*":
+        return "must not be empty or wildcard"
+    try:
+        parsed = urlparse(raw)
+    except ValueError as exc:
+        return f"unparseable URL ({exc})"
+    if parsed.scheme != "https":
+        return "must use https:// scheme"
+    if not parsed.hostname:
+        return "missing host"
+    host = parsed.hostname.lower()
+    if host in {"localhost", "0.0.0.0"} or host.startswith("127.") or host.startswith("169.254."):
+        return "loopback / link-local hosts are not valid production origins"
+    if "*" in host:
+        return "wildcard hosts are not allowed"
+    if parsed.username or parsed.password:
+        return "must not contain userinfo"
+    if parsed.path and parsed.path != "/":
+        return "must not contain a path"
+    if parsed.query or parsed.fragment:
+        return "must not contain a query string or fragment"
+    return ""
 
 
 def _missing_or_placeholder_secret(name: str) -> bool:

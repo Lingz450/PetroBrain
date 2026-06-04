@@ -10,6 +10,7 @@ the principal is rebuilt from.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import bcrypt
 import jwt
@@ -68,5 +69,10 @@ def mint_jwt(
         "aud": audience,
         "iat": now,
         "exp": now + ttl,
+        # Per-token id for server-side revocation. /auth/logout pushes the jti
+        # onto the revocation set with TTL = remaining lifetime so memory
+        # doesn't grow unbounded; get_principal rejects any token whose jti is
+        # in the set.
+        "jti": str(uuid4()),
     }
     return jwt.encode(claims, secret, algorithm="HS256")

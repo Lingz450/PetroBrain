@@ -7,6 +7,30 @@ import { decodePrincipal } from './jwt.js';
 
 export type ThinkingMode = 'instant' | 'default' | 'extended';
 
+/**
+ * Resolve the API base URL. In dev the localhost fallback is fine; in any
+ * non-dev build we refuse to fall back so a deploy that forgot to set
+ * NEXT_PUBLIC_API_BASE_URL fails loudly rather than silently calling
+ * http://localhost:8000 from a customer browser.
+ */
+function resolveApiBaseUrl(): string {
+  const runtime =
+    typeof window !== 'undefined'
+      ? (window as Window & { __PB_API__?: string }).__PB_API__
+      : undefined;
+  const env = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const resolved = runtime ?? env;
+  if (resolved) return resolved;
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv && nodeEnv !== 'development' && nodeEnv !== 'test') {
+    throw new Error(
+      'NEXT_PUBLIC_API_BASE_URL is not set. Refusing to fall back to ' +
+        'http://localhost:8000 in a non-development build.',
+    );
+  }
+  return 'http://localhost:8000';
+}
+
 interface ChatStoreState {
   token: string | null;
   principal: Principal | null;
@@ -51,11 +75,7 @@ export const useChatStore = create<ChatStoreState>()(
       module: 'general',
       assetContext: null,
       thinkingMode: 'default',
-      apiBaseUrl: typeof window === 'undefined'
-        ? (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000')
-        : (window as Window & { __PB_API__?: string }).__PB_API__
-          ?? process.env.NEXT_PUBLIC_API_BASE_URL
-          ?? 'http://localhost:8000',
+      apiBaseUrl: resolveApiBaseUrl(),
       webSearchEnabled: true,
       forceCanvasNext: false,
       sidebarCollapsed: false,

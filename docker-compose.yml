@@ -1,4 +1,8 @@
-version: "3.9"
+# LOCAL DEV ONLY. Do not run on a public host:
+#   * Postgres / Redis / MinIO are bound to host ports with default creds.
+#   * .env loads dev secrets directly into containers.
+# For production use docker-compose-prod.yml (Tier B) or the AWS Terraform stack
+# in infra/envs/prod.
 services:
   api:
     build: .

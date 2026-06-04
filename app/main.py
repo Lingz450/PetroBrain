@@ -35,6 +35,21 @@ from app.core.observability import metrics_response, setup_observability
 
 settings = get_settings()
 validate_production_settings(settings)
+
+# H9: refuse to boot in prod if the DB role bypasses RLS. No-op outside prod
+# or when persistence is local_json. Catches the common ops shortcut of
+# pointing the app at the RDS master/superuser by mistake.
+try:
+    from app.db import pg as _pg
+
+    _pg.assert_role_safe_for_rls()
+except RuntimeError:
+    raise
+except Exception:  # noqa: BLE001 - dependency missing / DB unreachable at import time
+    # In prod the validator + the DB pool will fail fast on the next call;
+    # we don't want to make a transient connect blip block startup.
+    pass
+
 app = FastAPI(title=settings.app_name, version="0.1.0")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -92,10 +107,29 @@ async def index():
 
 @app.get("/health")
 async def health():
+    env = (settings.environment or "").lower()
+    demo = env == "demo" or settings.object_store_backend == "memory"
+    allowed_origins = [
+        o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()
+    ]
     return {
         "status": "ok",
         "app": settings.app_name,
         "tier": "B" if settings.operational_tier else "A",
+        "environment": settings.environment,
+        # Truthy when state is ephemeral (Render free tier / in-memory object
+        # store). Clients SHOULD surface a banner so users don't treat the
+        # instance as production.
+        "demo": demo,
+        "warning": (
+            "This is a DEMO instance. Uploads and state are not persisted "
+            "across restarts. Do not use for production data."
+            if demo else None
+        ),
+        # Surfaced so ops can spot a misconfigured CORS allowlist without
+        # tailing config: a wildcarded or unexpected entry shows up here
+        # immediately. Public information (browsers know it anyway).
+        "allowed_origins": allowed_origins,
     }
 
 

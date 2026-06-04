@@ -100,6 +100,17 @@ def _close_pools() -> None:  # pragma: no cover - process teardown
 def set_tenant(conn: "Connection", tenant_id: str) -> None:
     """Set the session GUC consulted by the RLS policies. '*' = platform bypass."""
     conn.execute(f"SELECT set_config('{TENANT_GUC}', %s, false)", (tenant_id,))
+    # H3: platform-admin elevation crosses every tenant's data; surface it on
+    # every borrow so an SRE can grep for it after the fact. The log line is
+    # also an alertable signal in prod (one platform_admin per session is
+    # normal; a sudden spike isn't).
+    if tenant_id == PLATFORM_ADMIN_TENANT:
+        import logging as _logging
+
+        _logging.getLogger("petrobrain.rls").warning(
+            "platform_admin_elevation",
+            extra={"tenant_guc": tenant_id},
+        )
 
 
 @contextmanager
@@ -114,14 +125,25 @@ def tenant_connection(tenant_id: str, *, dsn: str | None = None,
     BEFORE yielding, so a reused connection can never serve the previous
     tenant's rows. ``dict_rows=True`` returns column-keyed dict rows.
     ``autocommit`` is governed by the pool (always True); the parameter is kept
-    for call-site compatibility."""
+    for call-site compatibility.
+
+    M1: belt + braces - we set the GUC on borrow (above) and RESET it on
+    return. Even if a future code path forgets to call set_tenant before a
+    query, the reset means a stale GUC from the previous borrow cannot leak.
+    """
     from psycopg.rows import dict_row, tuple_row
 
     pool = _get_pool(dsn)
     with pool.connection() as conn:
         conn.row_factory = dict_row if dict_rows else tuple_row  # type: ignore[assignment]
         set_tenant(conn, tenant_id)
-        yield conn
+        try:
+            yield conn
+        finally:
+            try:
+                conn.execute(f"SELECT set_config('{TENANT_GUC}', '', false)")
+            except Exception:  # noqa: BLE001 - connection may already be broken
+                pass
 
 
 def bootstrap_schema(conn: "Connection") -> None:
@@ -153,6 +175,36 @@ def run_migrations(dsn: str | None = None) -> list[str]:
     """Convenience entrypoint: open a connection and apply all migrations."""
     with connect(dsn) as conn:
         return apply_migrations(conn)
+
+
+def assert_role_safe_for_rls(dsn: str | None = None) -> None:
+    """Refuse to proceed if the connecting role bypasses RLS (H9).
+
+    Postgres lets SUPERUSER and BYPASSRLS roles skip row-level security even
+    under ``FORCE ROW LEVEL SECURITY``. If the app connects as one of those by
+    mistake (a common shortcut in dev that leaks into staging), every RLS
+    policy in ``app/db/migrations`` silently no-ops and tenant isolation
+    collapses. Called from startup so a misconfiguration fails fast.
+    """
+    settings = get_settings()
+    if settings.persistence_backend != "postgres":
+        return
+    if settings.environment.lower() not in {"prod", "production"}:
+        return
+    with connect(dsn or settings.database_url) as conn:
+        row = conn.execute(
+            "SELECT rolsuper, rolbypassrls "
+            "FROM pg_roles WHERE rolname = current_user"
+        ).fetchone()
+    if row is None:
+        return
+    rolsuper, rolbypassrls = row[0], row[1]
+    if rolsuper or rolbypassrls:
+        raise RuntimeError(
+            "Unsafe production configuration: DB role bypasses RLS "
+            f"(rolsuper={rolsuper}, rolbypassrls={rolbypassrls}). "
+            "Use a NOSUPERUSER role with BYPASSRLS off."
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover - ops convenience

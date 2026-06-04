@@ -55,6 +55,13 @@ async def get_principal(authorization: str = Header(default="")) -> Principal:
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail="invalid credentials") from exc
 
+    # Server-side revocation check: signature + exp are valid, but the user may
+    # have hit /auth/logout or an admin may have revoked the jti out-of-band.
+    from app.core.token_revocation import is_revoked
+    jti = claims.get("jti")
+    if isinstance(jti, str) and jti and is_revoked(jti):
+        raise HTTPException(status_code=401, detail="token revoked")
+
     try:
         principal = Principal(
             tenant_id=_claim_str(claims, "tenant_id"),
@@ -71,34 +78,45 @@ async def get_principal(authorization: str = Header(default="")) -> Principal:
 
 async def _neon_principal(token: str) -> Principal:
     """
-    Verify a Neon Auth (Better Auth) EdDSA token and map it to a Principal.
+    Verify a Neon Auth (Better Auth) EdDSA token and map it to a Principal via
+    the local users table.
 
-    Neon tokens carry the user's identity (``sub``/``email``) but not our tenant/role, so for
-    now every Neon user maps into the default tenant with the default role (configurable via
-    ``PB_DEFAULT_SIGNUP_TENANT_ID`` / ``PB_DEFAULT_SIGNUP_ROLE``). Real per-user tenant/role
-    resolution (a memberships table keyed by the Neon ``sub``) is a follow-up.
+    Disabled by default. When ``PB_NEON_AUTH_ENABLED=true``, the token must:
+      * pass JWKS signature + ``exp`` verification, AND
+      * carry an ``email`` claim that matches an *active* row in the ``users``
+        table - which is what supplies tenant_id, role, and allowed_assets.
+
+    No email match = 401. Previously this path collapsed every Neon user into
+    ``default_signup_tenant_id`` with ``allowed_assets=["*"]``, which silently
+    defeated multi-tenant isolation. There is no per-tenant trust-on-first-use:
+    a tenant admin must invite the user before Neon SSO works for them.
     """
-    if not neon_auth.is_configured():
-        raise HTTPException(status_code=401, detail="invalid credentials")
+    settings = get_settings()
+    invalid = HTTPException(status_code=401, detail="invalid credentials")
+    if not settings.neon_auth_enabled or not neon_auth.is_configured():
+        raise invalid
     try:
-        # JWKS fetch + verify is blocking; keep it off the event loop.
         claims = await run_in_threadpool(neon_auth.verify_neon_token, token)
     except Exception as exc:  # JWKS fetch / signature / expiry failure
-        raise HTTPException(status_code=401, detail="invalid credentials") from exc
+        raise invalid from exc
 
-    sub = claims.get("sub")
-    if not isinstance(sub, str) or not sub.strip():
-        raise HTTPException(status_code=401, detail="invalid credentials")
+    email = claims.get("email")
+    if not isinstance(email, str) or not email.strip():
+        raise invalid
 
-    settings = get_settings()
-    role = settings.default_signup_role
+    from app.db.users_repository import get_users_repository
+    repo = get_users_repository()
+    record = await run_in_threadpool(repo.find_by_email_any_tenant, email.strip())
+    if record is None or record.get("status") != "active":
+        raise invalid
+    role = record.get("role")
     if role not in VALID_ROLES:
-        role = "engineer"
+        raise invalid
     return Principal(
-        tenant_id=settings.default_signup_tenant_id,
-        user_id=sub,
+        tenant_id=record["tenant_id"],
+        user_id=record["id"],
         role=role,
-        allowed_assets=["*"],
+        allowed_assets=list(record.get("allowed_assets") or []),
     )
 
 

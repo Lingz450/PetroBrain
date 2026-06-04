@@ -53,6 +53,10 @@ def wire(monkeypatch, tenants_repo, users_repo):
     monkeypatch.setattr(routes_auth, "get_settings", lambda: settings)
     monkeypatch.setattr(routes_auth, "get_users_repository", lambda: users_repo)
     monkeypatch.setattr(routes_auth, "get_tenants_repository", lambda: tenants_repo)
+    # H4: reset per-account lockout state between cases so we don't bleed
+    # consecutive-failure counts across tests.
+    from app.core import auth_lockout
+    auth_lockout.reset_for_tests()
 
 
 def test_signup_creates_active_user_in_default_tenant_and_returns_jwt(tenants_repo, users_repo):

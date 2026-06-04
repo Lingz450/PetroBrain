@@ -153,6 +153,21 @@ aws ecs update-service --cluster petrobrain-<env>-cluster --service petrobrain-<
   aws rds create-db-snapshot --db-instance-identifier petrobrain-<env>-pg \
     --db-snapshot-identifier petrobrain-<env>-pg-manual-$(date +%Y%m%d)
   ```
+- **M8 - quarterly restore drill** (audit requirement). A backup that has
+  never been test-restored doesn't count. Once a quarter:
+  1. PITR-restore the prod DB into a `*-restore` instance (command below).
+  2. Point a one-shot ECS task at it with `PB_DATABASE_URL` overridden.
+  3. Run `python -m app.db.pg` + `pytest tests/test_api_postgres_smoke.py -q`
+     to confirm migrations apply and the smoke queries return.
+  4. Record the date + restore time + smoke-test status in this file.
+  5. Tear the restore instance down.
+
+  Drill log (append rows):
+
+  | Date       | Restored from  | Smoke-test result | Operator |
+  |------------|----------------|-------------------|----------|
+  | _pending_  | _first drill_  | _pending_         | _pending_|
+
 - **Restore (PITR)** into a new instance, then repoint the `database-url` secret:
   ```bash
   aws rds restore-db-instance-to-point-in-time \
@@ -174,6 +189,35 @@ terraform destroy -var-file=terraform.tfvars
 ```
 Prod has `deletion_protection` on RDS and takes a final snapshot - disable
 protection deliberately and document why before destroying.
+
+---
+
+## 7. Capacity & sizing notes (M5 / M6)
+
+**Connection pool (M5).** Default `PB_DB_POOL_MAX_SIZE=10` per task. Prod runs
+`api_desired_count=2` ECS tasks plus 2 worker tasks (4 active processes), so
+the steady-state ceiling is **~40 concurrent Postgres connections**. RDS
+`r6g.large` defaults `max_connections=~1664`, so the pool is not the bottleneck
+below ~100 sustained RPS. Sizing rule of thumb: raise `PB_DB_POOL_MAX_SIZE` to
+`ceil(p99_rps * mean_query_ms / 1000)`. Re-baseline whenever ECS desired_count
+or RDS instance class changes.
+
+**Embedding + rerank model baking (M6).** The default config pulls
+`text-embedding-3-large` from OpenAI at request time (Tier A) and the rerank
+cross-encoder from HuggingFace at first start (`PB_RERANK_MODEL`). Tier B has
+`HF_HUB_OFFLINE=1` and mounts models read-only at `/models`, so the supply
+chain is pinned. For Tier A, bake the rerank model into the image at build
+time to remove the runtime HF hop:
+
+```dockerfile
+RUN python -c "from sentence_transformers import CrossEncoder; \
+    CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', \
+        cache_folder='/var/cache/petrobrain')"
+ENV PB_RERANK_CACHE_DIR=/var/cache/petrobrain
+```
+
+Re-do the image build whenever the model version is bumped; verify with a
+filesystem check at container start.
 
 ---
 

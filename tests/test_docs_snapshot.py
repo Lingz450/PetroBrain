@@ -46,7 +46,12 @@ def test_full_snapshot_returns_docs_with_chunks(repo):
 
 
 def test_incremental_snapshot_since(repo):
+    import time as _time
     d1 = _save(repo, tenant_id="tenant-a", document_id="SOP-1")
+    # Guarantee a strictly later timestamp on Windows where clock resolution
+    # plus test-ordering side effects can collapse two consecutive saves to
+    # the same microsecond. since=... uses strict `>` comparison.
+    _time.sleep(0.002)
     _save(repo, tenant_id="tenant-a", document_id="SOP-2")
     body = client.get("/docs/snapshot", params={"since": d1.created_utc},
                       headers=auth_headers(tenant_id="tenant-a")).json()

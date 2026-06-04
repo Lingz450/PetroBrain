@@ -1,10 +1,17 @@
-# PetroBrain Render Blueprint (Free Tier).
+# PetroBrain Render Blueprint - DEMO ONLY. NOT FOR CUSTOMER DATA.
 #
-# Zero-cost first-deploy config:
-#   - Web service on Render's Free plan (cold-starts after 15 min idle).
-#   - No managed Postgres; persistence_backend=local_json stores everything
-#     inside the container, so data resets on every deploy/restart.
+# This blueprint exists for sales demos and pre-release evaluation. State is
+# ephemeral, the LLM key is shared, and the validator is intentionally skipped
+# (PB_ENVIRONMENT=demo, not "prod"). DO NOT point real customers at this URL.
+#
+# What's wired up:
+#   - Render Free plan (cold-starts after 15 min idle).
+#   - Object storage is IN-MEMORY (PB_OBJECT_STORE_BACKEND=memory).
+#     /admin/documents now returns 410 here so uploads can't silently vanish.
+#   - Audit log lives at /tmp/audit.jsonl, lost on every deploy.
 #   - Reranker disabled to keep RAM under the 512 MB free-tier ceiling.
+#   - Self-signup OFF; an admin must invite users via /admin/.../users.
+#   - /health reports {"demo": true, "warning": "..."} so clients show a banner.
 #
 # To promote to production:
 #   1. Add a `databases:` block (Postgres Basic-256MB, $6/mo).

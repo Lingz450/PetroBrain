@@ -42,6 +42,18 @@ async def upload_document(
     metadata: str = Form(..., description="JSON object with admin document metadata"),
     who: Principal = Depends(_admin_only),
 ):
+    settings = get_settings()
+    # Demo deployments use in-memory object storage; persisting an upload here
+    # would silently lose the document on the next restart. Refuse with a
+    # clear error rather than performing a write that won't survive.
+    if settings.object_store_backend == "memory":
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "uploads are disabled on this demo instance "
+                "(object storage is in-memory; documents would not persist)"
+            ),
+        )
     parsed = _parse_metadata(metadata)
     require_asset_access(who, parsed.asset)
     filename = (file.filename or "").strip()
@@ -148,12 +160,17 @@ def _validate_file_signature(filename: str, body: bytes) -> None:
 
 def _scan_upload(filename: str, body: bytes) -> None:
     settings = get_settings()
+    # H8: a non-prod deploy that accepts uploads with the scanner disabled is
+    # the prospect-demo malware vector we saw in the audit. The fail-closed
+    # default outside prod was False; here we promote it to True unconditionally
+    # whenever the scanner is *enabled* but unreachable, so a half-configured
+    # staging never accepts unscanned bytes.
     try:
         scan_bytes(filename, body, settings)
     except MalwareDetected as exc:
         raise HTTPException(status_code=422, detail=f"malware detected: {exc}") from exc
     except MalwareScanUnavailable as exc:
-        if settings.malware_scan_fail_closed:
+        if settings.malware_scan_enabled or settings.malware_scan_fail_closed:
             raise HTTPException(status_code=503, detail="malware scanner unavailable") from exc
         audit_logger.write(AuditEvent(
             event_type="admin_document_malware_scan_unavailable",

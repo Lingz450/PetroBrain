@@ -57,3 +57,53 @@ def test_production_settings_reject_enabled_self_signup(monkeypatch):
 
     with pytest.raises(RuntimeError, match="PB_ENABLE_SELF_SIGNUP"):
         validate_production_settings(_prod_settings(enable_self_signup=True))
+
+
+def test_tier_a_prod_rejects_plaintext_redis(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-value")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-value")
+
+    with pytest.raises(RuntimeError, match="PB_REDIS_URL"):
+        validate_production_settings(
+            _prod_settings(redis_url="redis://:secret@redis.example.com:6379/0")
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_origin,fragment",
+    [
+        ("http://app.example.com", "https://"),
+        ("https://localhost", "loopback"),
+        ("https://127.0.0.1", "loopback"),
+        ("https://*.example.com", "wildcard"),
+        ("https://user:pass@app.example.com", "userinfo"),
+        ("https://app.example.com/admin", "path"),
+        ("https://app.example.com?x=1", "query"),
+    ],
+)
+def test_production_settings_reject_unsafe_cors_entries(monkeypatch, bad_origin, fragment):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-value")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-value")
+    with pytest.raises(RuntimeError, match=fragment):
+        validate_production_settings(
+            _prod_settings(cors_allow_origins=f"https://app.example.com,{bad_origin}")
+        )
+
+
+def test_tier_b_prod_allows_plaintext_redis_on_dmz_bridge(monkeypatch):
+    """Tier B runs inside the OT DMZ on a Docker bridge with no egress; the
+    rediss:// requirement is relaxed because the conduit never leaves the
+    boundary. The Tier-A check above still enforces TLS for cloud deployments."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-value")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-value")
+
+    validate_production_settings(
+        _prod_settings(
+            operational_tier=True,
+            llm_provider="self_hosted",
+            embedding_api_base="http://vllm-embed:8000",
+            redis_url="redis://:secret@redis:6379/0",
+            celery_broker_url="redis://:secret@redis:6379/1",
+            celery_result_backend="redis://:secret@redis:6379/2",
+        )
+    )
