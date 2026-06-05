@@ -1,7 +1,7 @@
 import type { HTMLAttributes } from 'react';
 import clsx from 'clsx';
 
-export type BadgeTone = 'neutral' | 'safe' | 'info' | 'warn' | 'danger';
+export type BadgeTone = 'neutral' | 'safe' | 'info' | 'warn' | 'danger' | 'primary';
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   tone?: BadgeTone;
@@ -13,6 +13,10 @@ const toneClasses: Record<BadgeTone, string> = {
   info: 'bg-info-bg text-info-fg border-info-border dark:bg-info-fg/20 dark:text-info-bg dark:border-info-border/40',
   warn: 'bg-warn-bg text-warn-fg border-warn-border dark:bg-warn-fg/20 dark:text-warn-bg dark:border-warn-border/40',
   danger: 'bg-danger-bg text-danger-fg border-danger-border dark:bg-danger-fg/20 dark:text-danger-bg dark:border-danger-border/40',
+  // Brand-colour pill - used for the user role chip in the sidebar so an
+  // admin's identity shows in PetroBrain orange instead of the generic
+  // blue 'info' tone.
+  primary: 'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-200 dark:border-primary-700/40',
 };
 
 export function Badge({ tone = 'neutral', className, children, ...rest }: BadgeProps) {

@@ -139,6 +139,29 @@ function groupByRecency(items: Conversation[]): Array<{ label: string; rows: Con
   return pinned.length > 0 ? [{ label: 'Pinned', rows: pinned }, ...recency] : recency;
 }
 
+/**
+ * User-facing label for a role. The backend's role enum (engineer / hse /
+ * admin / platform_admin / etc.) is an implementation detail - users see
+ * the friendly title. Both 'admin' and 'platform_admin' collapse to 'Admin'
+ * in this view because the sidebar is identity-only; cross-tenant
+ * platform-admin powers are made explicit on the /admin page's role pill.
+ */
+function friendlyRoleLabel(role: string): string {
+  switch (role) {
+    case 'platform_admin':
+    case 'admin':
+      return 'Admin';
+    case 'engineer':
+      return 'Engineer';
+    case 'hse':
+      return 'HSE';
+    case 'field':
+      return 'Field';
+    default:
+      return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+  }
+}
+
 function ConversationsList() {
   const principal = useChatStore((s) => s.principal);
   const ownerKey = useMemo(() => ownerKeyOf(principal), [principal]);
@@ -829,7 +852,7 @@ function UserCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">{displayName}</p>
           <div className="flex items-center gap-1.5">
-            <Badge tone="info">{principal.role}</Badge>
+            <Badge tone="primary">{friendlyRoleLabel(principal.role)}</Badge>
             <span className="truncate text-[10px] text-neutral-500 dark:text-neutral-400">{principal.tenantId}</span>
           </div>
         </div>
@@ -850,7 +873,7 @@ function UserCard({
               {accountLabel}
             </p>
             <p className="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-              {principal.role} · {principal.tenantId}
+              {friendlyRoleLabel(principal.role)} · {principal.tenantId}
             </p>
           </div>
 
@@ -879,7 +902,7 @@ function UserCard({
               <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Email</span>
               <span className="truncate text-neutral-800 dark:text-neutral-200">{accountLabel}</span>
               <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Role</span>
-              <span className="text-neutral-800 dark:text-neutral-200">{principal.role}</span>
+              <span className="text-neutral-800 dark:text-neutral-200">{friendlyRoleLabel(principal.role)}</span>
               <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Tenant</span>
               <span className="truncate font-mono text-neutral-800 dark:text-neutral-200">{principal.tenantId}</span>
             </div>
