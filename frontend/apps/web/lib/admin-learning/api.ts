@@ -15,6 +15,7 @@ import { SessionExpiredError, sessionExpiredKind } from '@/lib/chat/streamChat';
 
 import type {
   ChunkWeightRow,
+  ErrorEventRow,
   FeedbackRow,
   FeedbackSummary,
   FeedbackTrend,
@@ -209,4 +210,22 @@ export async function listChunkWeights(
   if (opts.limit != null) url.searchParams.set('limit', String(opts.limit));
   if (opts.offset != null) url.searchParams.set('offset', String(opts.offset));
   return json<ChunkWeightsResult>(await fetch(url, init(opts)));
+}
+
+// ---- User-visible errors ----------------------------------------------
+
+export interface ErrorEventsResult {
+  errors: ErrorEventRow[];
+  tenant_id: string;
+  limit: number;
+  offset: number;
+}
+
+export async function listErrors(
+  opts: ReqOpts & { limit?: number; offset?: number },
+): Promise<ErrorEventsResult> {
+  const url = new URL('/admin/errors', opts.baseUrl);
+  if (opts.limit != null) url.searchParams.set('limit', String(opts.limit));
+  if (opts.offset != null) url.searchParams.set('offset', String(opts.offset));
+  return json<ErrorEventsResult>(await fetch(url, init(opts)));
 }

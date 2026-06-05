@@ -80,6 +80,7 @@ class Settings(BaseSettings):
 
     # --- Retrieval re-ranking (slice 3 of the learning loop) ----------------
     chunk_weight_store_path: str = "data/tenant_chunk_weights.jsonl"
+    error_events_store_path: str = "data/error_events.jsonl"
     # Bounds on the multiplicative weight applied to fused scores. Floor is
     # the load-bearing safety guarantee: even a chunk that has accumulated
     # heavy negative feedback only loses 50% of its score and still surfaces.

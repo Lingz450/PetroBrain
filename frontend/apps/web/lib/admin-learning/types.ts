@@ -89,3 +89,15 @@ export interface ChunkWeightRow {
   down_count: number;
   last_updated: string;
 }
+
+export interface ErrorEventRow {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  role: string;
+  route: string;
+  status: number | null;
+  message: string;
+  metadata: Record<string, unknown>;
+  created_utc: string;
+}

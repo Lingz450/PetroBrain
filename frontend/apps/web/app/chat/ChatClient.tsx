@@ -13,6 +13,7 @@ import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
 import { SessionExpiredError, streamChat, type StreamEvent } from '@/lib/chat/streamChat';
 import { submitFeedback } from '@/lib/chat/feedback';
+import { reportError } from '@/lib/errors/report';
 
 import { AuthGate } from './components/AuthGate';
 import { CanvasPanel } from './components/CanvasPanel';
@@ -190,6 +191,14 @@ export function ChatClient() {
         err instanceof ShareApiError
           ? shareErrorMessage(err)
           : 'Could not create the share link. Please try again.';
+      void reportError({
+        baseUrl: apiBaseUrl,
+        token,
+        route: '/chat/shares',
+        error: err,
+        status: err instanceof ShareApiError ? err.status : null,
+        metadata: { kind: 'share' },
+      });
       setShareStatus({ kind: 'error', message });
     }
   }, [token, activeConversation, messages, module, apiBaseUrl]);
@@ -346,6 +355,13 @@ export function ChatClient() {
           expireSession(e.reason);
         } else {
           const detail = e instanceof Error ? e.message : String(e);
+          void reportError({
+            baseUrl: apiBaseUrl,
+            token,
+            route: '/chat',
+            error: e,
+            metadata: { kind: 'chat_stream', module },
+          });
           setError(detail);
           workingMessages = workingMessages.map((m) =>
             m.id === assistantId && m.role === 'assistant'
@@ -366,6 +382,7 @@ export function ChatClient() {
       assetContext,
       conversations,
       customInstructions,
+      expireSession,
       module,
       newConversation,
       ownerKey,
@@ -449,7 +466,17 @@ export function ChatClient() {
         rating,
         reason: reason ?? null,
         module: msg.toolResults[0]?.tool ? null : module,
-      }).catch(() => {
+      }).catch((err) => {
+        void reportError({
+          baseUrl: apiBaseUrl,
+          token,
+          route: '/chat/feedback',
+          error: err,
+          status: typeof (err as { status?: unknown }).status === 'number'
+            ? (err as { status: number }).status
+            : null,
+          metadata: { kind: 'feedback', turn_id: msg.turnId, rating },
+        });
         // Silent: the rating chip stays lit; the user can re-click to retry.
       });
     },

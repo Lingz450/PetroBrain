@@ -13,6 +13,7 @@ import {
   getGlossaryCandidates,
   getMemoryTrend,
   listChunkWeights,
+  listErrors,
   listFeedback,
   listMemory,
   promoteFeedbackToMemory,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/admin-learning/api';
 import type {
   ChunkWeightRow,
+  ErrorEventRow,
   FeedbackRow,
   FeedbackTrendPoint,
   GlossaryCandidate,
@@ -136,6 +138,11 @@ function LearningView({
     queryFn: ({ signal }) =>
       getGlossaryCandidates({ ...auth, signal, minCount: 2 }),
   });
+  const errors = useQuery({
+    queryKey: ['admin-learning', 'errors'],
+    queryFn: ({ signal }) => listErrors({ ...auth, signal, limit: 25 }),
+    refetchInterval: 30_000,
+  });
 
   // If anything came back with a SessionExpiredError, clear the session
   // exactly like the chat path does. The user lands on /signin with the
@@ -143,13 +150,13 @@ function LearningView({
   useEffect(() => {
     const errs = [
       summary.error, feedback.error, memories.error, weights.error,
-      feedbackTrend.error, memoryTrend.error, glossary.error,
+      feedbackTrend.error, memoryTrend.error, glossary.error, errors.error,
     ];
     if (errs.some((e) => e instanceof SessionExpiredError)) {
       onSessionExpired();
     }
   }, [summary.error, feedback.error, memories.error, weights.error,
-      feedbackTrend.error, memoryTrend.error, glossary.error, onSessionExpired]);
+      feedbackTrend.error, memoryTrend.error, glossary.error, errors.error, onSessionExpired]);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-white via-white to-primary-50/30 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20">
@@ -214,6 +221,12 @@ function LearningView({
           memory={memoryTrend.data?.series ?? []}
           loading={feedbackTrend.isLoading || memoryTrend.isLoading}
           error={feedbackTrend.error ?? memoryTrend.error}
+        />
+
+        <ErrorsSection
+          rows={errors.data?.errors ?? []}
+          loading={errors.isLoading}
+          error={errors.error}
         />
 
         <FeedbackSection
@@ -661,6 +674,78 @@ function MemoryTrendChart({ series }: { series: MemoryTrendPoint[] }) {
       </p>
     </div>
   );
+}
+
+// ---- User-visible errors ----------------------------------------------
+
+function ErrorsSection({
+  rows,
+  loading,
+  error,
+}: {
+  rows: ErrorEventRow[];
+  loading: boolean;
+  error: unknown;
+}) {
+  return (
+    <Card
+      title="User-visible errors"
+      description="Latest failed user actions reported by the app. Prompts and raw chat text are not stored here."
+    >
+      {error && !(error instanceof SessionExpiredError) ? (
+        <Banner tone="danger" title="Failed to load errors">
+          {(error as Error).message}
+        </Banner>
+      ) : null}
+      {loading ? <p className="text-sm text-neutral-500">Loading...</p> : null}
+      {!loading && rows.length === 0 ? (
+        <p className="text-sm text-neutral-500">
+          No reported user-visible errors yet.
+        </p>
+      ) : null}
+      {rows.length > 0 ? (
+        <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+          {rows.map((row) => (
+            <ErrorRowItem key={row.id} row={row} />
+          ))}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function ErrorRowItem({ row }: { row: ErrorEventRow }) {
+  const when = safeDate(row.created_utc);
+  return (
+    <article className="flex flex-col gap-2 py-3 md:flex-row md:items-start md:justify-between">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={row.status && row.status >= 500 ? 'danger' : 'warn'}>
+            {row.status ? `${row.status}` : 'client'}
+          </Badge>
+          <span className="truncate text-xs font-medium text-neutral-600 dark:text-neutral-300">
+            {row.route}
+          </span>
+          <span className="text-[11px] text-neutral-400">
+            {when}
+          </span>
+        </div>
+        <p className="break-words text-sm text-neutral-800 dark:text-neutral-100">
+          {row.message}
+        </p>
+      </div>
+      <div className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400 md:text-right">
+        <p className="font-medium">{row.role}</p>
+        <p className="max-w-[12rem] truncate" title={row.user_id}>{row.user_id}</p>
+      </div>
+    </article>
+  );
+}
+
+function safeDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 // ---- Feedback section --------------------------------------------------

@@ -25,6 +25,7 @@ from app.api import (
     routes_chat_shares,
     routes_documents,
     routes_emissions,
+    routes_errors,
     routes_wellcontrol,
 )
 from app.config import get_settings, validate_production_settings
@@ -103,6 +104,8 @@ app.include_router(routes_admin_permits.router)
 app.include_router(routes_admin_feedback.router)
 app.include_router(routes_admin_memory.router)
 app.include_router(routes_admin_chunk_weights.router)
+app.include_router(routes_errors.report_router)
+app.include_router(routes_errors.admin_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
