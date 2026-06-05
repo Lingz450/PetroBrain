@@ -961,6 +961,7 @@ def _web_search_citations(tool_name: Any, result: Any) -> list[dict[str, Any]]:
     if not isinstance(rows, list):
         return []
     out: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -968,6 +969,10 @@ def _web_search_citations(tool_name: Any, result: Any) -> list[dict[str, Any]]:
         title = row.get("title")
         if not isinstance(url, str) or not url:
             continue
+        normalized_url = url.strip().lower()
+        if normalized_url in seen_urls:
+            continue
+        seen_urls.add(normalized_url)
         out.append({
             "title": title if isinstance(title, str) and title else url,
             "revision": None,
@@ -1011,6 +1016,7 @@ def _fallback_answer_from_web_results(tool_results: list[dict[str, Any]]) -> str
         if isinstance(raw_rows, list):
             rows.extend(row for row in raw_rows if isinstance(row, dict))
 
+    rows = _dedupe_web_summary_rows(rows)
     if not rows:
         return ""
 
@@ -1019,7 +1025,7 @@ def _fallback_answer_from_web_results(tool_results: list[dict[str, Any]]) -> str
         title = _clean_summary_part(row.get("title")) or "Source"
         snippet = _clean_summary_part(row.get("snippet"))
         if snippet:
-            bullets.append(f"- {title}: {_truncate_words(snippet, 34)}")
+            bullets.append(_format_web_summary_bullet(title, snippet))
         else:
             bullets.append(f"- {title}: this source was returned for the question, but no snippet was available.")
 
@@ -1028,6 +1034,50 @@ def _fallback_answer_from_web_results(tool_results: list[dict[str, Any]]) -> str
         + "\n".join(bullets)
         + "\n\nVerify company identity, ownership, and operating status against the linked sources before relying on it."
     )
+
+
+def _dedupe_web_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        title = _clean_summary_part(row.get("title"))
+        snippet = _clean_summary_part(row.get("snippet"))
+        url = _clean_summary_part(row.get("url"))
+        url_key = _normalize_summary_key(url)
+        content_key = "|".join(
+            part
+            for part in (
+                _normalize_summary_key(title),
+                _normalize_summary_key(_truncate_words(snippet, 18)),
+            )
+            if part
+        )
+        keys = [key for key in (url_key, content_key) if key]
+        if not keys or any(key in seen for key in keys):
+            continue
+        seen.update(keys)
+        out.append(row)
+    return out
+
+
+def _format_web_summary_bullet(title: str, snippet: str) -> str:
+    summary = _truncate_words(snippet, 34)
+    if _same_summary_lead(title, snippet):
+        return f"- {summary}"
+    return f"- {title}: {summary}"
+
+
+def _same_summary_lead(left: str, right: str) -> bool:
+    left_words = _normalize_summary_key(left).split()
+    right_words = _normalize_summary_key(right).split()
+    if len(left_words) < 3 or len(right_words) < 3:
+        return False
+    lead = left_words[: min(len(left_words), 8)]
+    return right_words[: len(lead)] == lead
+
+
+def _normalize_summary_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
 def _clean_summary_part(value: Any) -> str:

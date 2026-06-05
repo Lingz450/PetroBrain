@@ -195,6 +195,65 @@ def test_stream_chat_summarizes_web_results_when_final_answer_is_empty(monkeypat
     assert events[-1][1]["answer"] == events[-2][1]["text"]
 
 
+def test_stream_chat_dedupes_repeated_web_summary_rows(monkeypatch):
+    schema, _ = TOOL_REGISTRY["web_search"]
+    duplicate_title = "From the Right: Kola Kelani (CFO, Bono Energy Limited), Adejare..."
+    duplicate_snippet = (
+        "From the Right: Kola Kelani (CFO, Bono Energy Limited), Adejare Kikelomo "
+        "(Regulatory Officer/Director), Steve Okeleji (MD/CEO)."
+    )
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "web_search",
+        (
+            schema,
+            lambda payload: {
+                "query": payload["query"],
+                "provider": "test",
+                "results": [
+                    {
+                        "title": duplicate_title,
+                        "url": "https://example.com/a",
+                        "snippet": duplicate_snippet,
+                    },
+                    {
+                        "title": duplicate_title,
+                        "url": "https://example.com/b",
+                        "snippet": duplicate_snippet,
+                    },
+                    {
+                        "title": "Bono Energy: Employee Directory",
+                        "url": "https://example.com/directory",
+                        "snippet": "Some Bono Energy key employees are listed in public business directories.",
+                    },
+                ],
+            },
+        ),
+    )
+    first = LLMResponse(
+        text="",
+        tool_calls=[{
+            "name": "web_search",
+            "input": {"query": "Bono Energy"},
+            "id": "tool-web-1",
+        }],
+        usage={"input": 10, "output": 5},
+        model="fake-model",
+    )
+    llm = StreamingLLM(stream_tokens=[], complete_responses=[first])
+    monkeypatch.setattr(routes_chat, "_orch", Orchestrator(llm=llm))
+
+    events = stream_chat({
+        "message": "what do you know about bono energy",
+        "module": "general",
+    })
+
+    answer = events[-2][1]["text"]
+    assert answer.count("Kola Kelani") == 1
+    assert answer.count("From the Right:") == 1
+    assert "Employee Directory" in answer
+
+
 def test_stream_chat_guardrail_refusal_emits_flag_token_done(monkeypatch):
     monkeypatch.setattr(routes_chat, "_orch", Orchestrator(llm=StreamingLLM()))
 
