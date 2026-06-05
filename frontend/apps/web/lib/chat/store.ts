@@ -149,8 +149,15 @@ export const useChatStore = create<ChatStoreState>()(
         // canvas on the next turn.
       }),
       onRehydrateStorage: () => (state) => {
-        // Re-derive the principal in case the persisted shape predates a schema bump.
-        if (state?.token) state.principal = decodePrincipal(state.token);
+        // Re-derive the principal in case the persisted shape predates a schema bump,
+        // but keep the richer auth response email when older tokens do not carry it.
+        if (state?.token) {
+          const persistedEmail = state.principal?.email;
+          const decoded = decodePrincipal(state.token);
+          state.principal = decoded && !decoded.email && persistedEmail
+            ? { ...decoded, email: persistedEmail }
+            : decoded;
+        }
         if (state) state.hasHydrated = true;
       },
     },
@@ -158,10 +165,11 @@ export const useChatStore = create<ChatStoreState>()(
 );
 
 function principalFromPayload(payload: PrincipalPayload): Principal {
+  const email = payload.email?.trim();
   return {
     tenantId: payload.tenant_id,
     userId: payload.user_id,
-    ...(payload.email ? { email: payload.email } : {}),
+    ...(email ? { email } : {}),
     role: payload.role,
     allowedAssets: Array.isArray(payload.allowed_assets)
       ? payload.allowed_assets.filter((x): x is string => typeof x === 'string')

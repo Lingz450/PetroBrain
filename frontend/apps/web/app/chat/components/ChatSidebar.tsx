@@ -773,11 +773,7 @@ function UserCard({
   const displayNameSetting = useSettingsStore((s) => s.displayName);
   const preferredName = (callMeName || displayNameSetting).trim();
   const accountLabel = principal.email || principal.userId;
-  const isEmail = accountLabel.includes('@');
-  const derivedName = isEmail
-    ? accountLabel.split('@')[0]!.charAt(0).toUpperCase() + accountLabel.split('@')[0]!.slice(1)
-    : accountLabel;
-  const displayName = preferredName || derivedName;
+  const displayName = preferredName || accountLabel;
   const initials = displayName.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || 'PB';
   const [open, setOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);

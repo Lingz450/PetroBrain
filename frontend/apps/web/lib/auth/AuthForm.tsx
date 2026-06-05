@@ -127,10 +127,11 @@ export function AuthForm({ mode }: AuthFormProps) {
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), 60_000);
     try {
+      const cleanedEmail = email.trim();
       const res = mode === 'signup'
-        ? await signup(apiBaseUrl, { email: email.trim(), password }, controller.signal)
-        : await signin(apiBaseUrl, { email: email.trim(), password }, controller.signal);
-      setToken(res.token, res.principal);
+        ? await signup(apiBaseUrl, { email: cleanedEmail, password }, controller.signal)
+        : await signin(apiBaseUrl, { email: cleanedEmail, password }, controller.signal);
+      setToken(res.token, { ...res.principal, email: res.principal.email || cleanedEmail });
       clearSessionExpired();
       // Capture the signup name in the same settings field the sidebar pill
       // already prefers over the auto-generated user_id, so the user sees
