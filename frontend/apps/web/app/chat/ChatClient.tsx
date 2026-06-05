@@ -6,7 +6,14 @@ import type { Citation, ToolResult } from '@petrobrain/types';
 
 import { useChatStore } from '@/lib/chat/store';
 import { ownerKeyOf, useConversationsStore } from '@/lib/chat/conversations';
-import { exportConversationPdf, isExportable } from '@/lib/chat/exportConversation';
+import {
+  exportAssistantMessageMarkdown,
+  exportAssistantMessagePdf,
+  exportAssistantMessageText,
+  exportAssistantMessageWord,
+  exportConversationPdf,
+  isExportable,
+} from '@/lib/chat/exportConversation';
 import { buildSnapshot, mintShare, shareUrlFor, ShareApiError } from '@/lib/chat/shares';
 import { isCanvasWorthy } from '@/lib/chat/canvas';
 import { useProjectsStore } from '@/lib/chat/projects';
@@ -36,6 +43,55 @@ function nextId(prefix: string): string {
 }
 
 const EMPTY_MESSAGES: Message[] = [];
+
+type AnswerExportFormat = 'pdf' | 'word' | 'markdown' | 'text';
+
+function detectAnswerExportRequest(text: string): AnswerExportFormat | null {
+  const q = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  const asksForExport =
+    /\b(convert|export|download|save|put|make|turn|create|give me|give|send)\b/.test(q)
+    && /\b(this|that|answer|response|reply|it|the answer|the response)\b/.test(q)
+    && /\b(pdf|word|docx|doc|document|markdown|md|text|txt)\b/.test(q);
+
+  if (!asksForExport) return null;
+  if (/\bpdf\b/.test(q)) return 'pdf';
+  if (/\b(word|docx|doc)\b/.test(q)) return 'word';
+  if (/\b(markdown|md)\b/.test(q)) return 'markdown';
+  if (/\b(text|txt)\b/.test(q)) return 'text';
+  if (/\bdocument\b/.test(q)) return 'word';
+  return null;
+}
+
+function findLastExportableAssistantMessage(messages: Message[]): AssistantMessage | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg?.role === 'assistant' && !msg.streaming && msg.text.trim().length > 0) {
+      return msg;
+    }
+  }
+  return null;
+}
+
+function exportAssistantAnswer(
+  message: AssistantMessage,
+  format: AnswerExportFormat,
+  title: string,
+): string {
+  if (format === 'pdf') {
+    exportAssistantMessagePdf(message, title);
+    return 'I opened the PDF export view for the previous answer. Choose Save as PDF in the print dialog.';
+  }
+  if (format === 'word') {
+    exportAssistantMessageWord(message, title);
+    return 'I downloaded the previous answer as a Word-compatible document.';
+  }
+  if (format === 'markdown') {
+    exportAssistantMessageMarkdown(message, title);
+    return 'I downloaded the previous answer as a Markdown file.';
+  }
+  exportAssistantMessageText(message, title);
+  return 'I downloaded the previous answer as a text file.';
+}
 
 export function ChatClient() {
   const token = useChatStore((s) => s.token);
@@ -249,6 +305,41 @@ export function ChatClient() {
         convoId = newConversation(ownerKey, activeProject?.id ?? null);
       }
 
+      const baseMessages = conversations[convoId]?.messages ?? [];
+      const exportFormat = attachments.length === 0 ? detectAnswerExportRequest(trimmed) : null;
+      if (exportFormat) {
+        const userMsg: Message = {
+          id: nextId('u'),
+          role: 'user',
+          text: trimmed,
+          module,
+          assetContext,
+          createdAt: Date.now(),
+        };
+        const target = findLastExportableAssistantMessage(baseMessages);
+        const title = conversations[convoId]?.title || 'PetroBrain answer';
+        const confirmation = target
+          ? exportAssistantAnswer(target, exportFormat, title)
+          : 'I need an answer to export first. Ask PetroBrain a question, then request PDF, Word, Markdown, or text export.';
+        const assistantMsg: AssistantMessage = {
+          id: nextId('a'),
+          role: 'assistant',
+          text: confirmation,
+          citations: [],
+          toolResults: [],
+          evidencePack: null,
+          flags: [],
+          streaming: false,
+          createdAt: Date.now(),
+        };
+        setMessagesInStore(convoId, [...baseMessages, userMsg, assistantMsg], ownerKey);
+        if (baseMessages.length === 0) {
+          setTitleFromFirstMessage(convoId, trimmed || 'Document export');
+        }
+        setError(null);
+        return;
+      }
+
       // Backend now receives attachments natively: images and documents
       // (PDF/DOCX) go up as base64 so the orchestrator can render the image
       // block or extract text in-process via pdfplumber/python-docx.
@@ -289,7 +380,6 @@ export function ChatClient() {
         createdAt: Date.now(),
       };
 
-      const baseMessages = conversations[convoId]?.messages ?? [];
       let workingMessages: Message[] = [...baseMessages, userMsg, assistantMsg];
       setMessagesInStore(convoId, workingMessages, ownerKey);
 

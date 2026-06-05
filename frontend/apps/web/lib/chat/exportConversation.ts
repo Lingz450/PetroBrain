@@ -89,10 +89,14 @@ function formatBytes(n: number): string {
 export function downloadMarkdown(filename: string, content: string): void {
   const safe = (filename.replace(SAFE_FILENAME_RE, '-').replace(/-+/g, '-').slice(0, 80) || 'conversation') + '.md';
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  downloadBlob(safe, blob);
+}
+
+function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = safe;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -108,7 +112,72 @@ export function exportConversationPdf(conv: Conversation): void {
   const dateStamp = new Date().toISOString().slice(0, 10);
   const docTitle = `PetroBrain - ${title} - ${dateStamp}`;
   const html = renderConversationPrintHtml(conv, title, docTitle);
+  printHtml(docTitle, html);
+}
 
+export function assistantMessageToMarkdown(
+  message: AssistantMessage,
+  title = 'PetroBrain answer',
+): string {
+  const lines: string[] = [];
+  lines.push(`# ${title}`);
+  lines.push('');
+  lines.push(`> Exported from PetroBrain - ${new Date().toISOString()}`);
+  lines.push('');
+  lines.push(...renderAssistant(message));
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  lines.push(
+    'PetroBrain is decision support - verify safety-critical numbers with the competent person before acting.',
+  );
+  return lines.join('\n');
+}
+
+export function exportAssistantMessageMarkdown(
+  message: AssistantMessage,
+  title = 'PetroBrain answer',
+): void {
+  downloadMarkdown(title, assistantMessageToMarkdown(message, title));
+}
+
+export function exportAssistantMessageText(
+  message: AssistantMessage,
+  title = 'PetroBrain answer',
+): void {
+  const safe = `${safeFileStem(title)}.txt`;
+  downloadBlob(safe, new Blob([message.text.trim()], { type: 'text/plain;charset=utf-8' }));
+}
+
+export function exportAssistantMessageWord(
+  message: AssistantMessage,
+  title = 'PetroBrain answer',
+): void {
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  const docTitle = `PetroBrain - ${title} - ${dateStamp}`;
+  const html = renderAssistantDocumentHtml(message, title, docTitle);
+  const safe = `${safeFileStem(title)}.doc`;
+  downloadBlob(
+    safe,
+    new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' }),
+  );
+}
+
+export function exportAssistantMessagePdf(
+  message: AssistantMessage,
+  title = 'PetroBrain answer',
+): void {
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  const docTitle = `PetroBrain - ${title} - ${dateStamp}`;
+  const html = renderAssistantDocumentHtml(message, title, docTitle);
+  printHtml(docTitle, html);
+}
+
+function safeFileStem(filename: string): string {
+  return filename.replace(SAFE_FILENAME_RE, '-').replace(/-+/g, '-').slice(0, 80) || 'petrobrain-answer';
+}
+
+function printHtml(docTitle: string, html: string): void {
   // Hidden same-origin iframe avoids the popup blocker that
   // window.open trips, and prints just the conversation rather than the
   // whole React app the way window.print() on the host page would.
@@ -155,6 +224,129 @@ export function exportConversationPdf(conv: Conversation): void {
 
 export function isExportable(messages: Message[]): boolean {
   return messages.length > 0 && messages.some((m) => m.text.trim().length > 0);
+}
+
+function renderAssistantDocumentHtml(
+  message: AssistantMessage,
+  title: string,
+  docTitle: string,
+): string {
+  const body = renderMarkdownToHtml(message.text.trim() || 'No answer text available.');
+  const sources =
+    message.citations.length > 0
+      ? `<section class="meta-block"><h2>Sources</h2><ul>${message.citations
+          .map((c) => {
+            const label = [c.title, c.revision, c.clause].filter(Boolean).join(' - ');
+            return `<li>${escapeHtml(label || c.url || 'Source')}${
+              c.url ? ` - ${escapeHtml(c.url)}` : ''
+            }</li>`;
+          })
+          .join('')}</ul></section>`
+      : '';
+  const flags =
+    message.flags.length > 0
+      ? `<section class="meta-block"><h2>Notes</h2><p>${escapeHtml(message.flags.join(', '))}</p></section>`
+      : '';
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(docTitle)}</title>
+  <style>
+    @page { margin: 18mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: #171717;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    header {
+      border-bottom: 2px solid #ea580c;
+      margin-bottom: 22px;
+      padding-bottom: 14px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+    h2 {
+      margin: 16px 0 8px;
+      font-size: 15px;
+      line-height: 1.3;
+    }
+    .meta {
+      color: #666;
+      font-size: 11px;
+    }
+    .answer {
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .answer p { margin: 0 0 8px; }
+    .answer p:last-child { margin-bottom: 0; }
+    .answer h1, .answer h2, .answer h3 { margin: 12px 0 6px; line-height: 1.3; }
+    .answer h1 { font-size: 18px; }
+    .answer h2 { font-size: 16px; }
+    .answer h3 { font-size: 14px; }
+    .answer ul, .answer ol { margin: 4px 0 8px; padding-left: 22px; }
+    .answer li { margin: 2px 0; }
+    .answer code {
+      background: #f3f4f6;
+      border-radius: 3px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      padding: 1px 4px;
+    }
+    .answer pre {
+      background: #f3f4f6;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      margin: 6px 0 10px;
+      overflow-x: auto;
+      padding: 8px 10px;
+      white-space: pre-wrap;
+    }
+    .answer a { color: #c2410c; text-decoration: underline; }
+    .meta-block {
+      border-top: 1px solid #ddd;
+      color: #555;
+      font-size: 11px;
+      margin-top: 18px;
+      padding-top: 10px;
+    }
+    .meta-block ul { margin: 6px 0 0; padding-left: 18px; }
+    footer {
+      border-top: 1px solid #ddd;
+      color: #666;
+      font-size: 11px;
+      margin-top: 24px;
+      padding-top: 10px;
+    }
+    @media print {
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="meta">Exported from PetroBrain on ${escapeHtml(new Date().toLocaleString())}</div>
+  </header>
+  <main>
+    <section class="answer">${body}</section>
+    ${sources}
+    ${flags}
+  </main>
+  <footer>PetroBrain is decision support. Verify safety-critical numbers with the competent person before acting.</footer>
+</body>
+</html>`;
 }
 
 function renderConversationPrintHtml(

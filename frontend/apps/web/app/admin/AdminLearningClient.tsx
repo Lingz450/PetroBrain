@@ -325,11 +325,13 @@ function KindDropdown({
   value,
   onChange,
   label,
+  placement = 'bottom',
 }: {
   id?: string;
   value: MemoryKind;
   onChange: (k: MemoryKind) => void;
   label: string;
+  placement?: 'bottom' | 'top';
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -387,7 +389,9 @@ function KindDropdown({
       {open ? (
         <div
           aria-label={label}
-          className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-[0_18px_45px_-12px_rgba(15,23,42,0.18),0_4px_10px_-2px_rgba(15,23,42,0.08)] dark:border-neutral-700 dark:bg-neutral-900"
+          className={`absolute left-0 right-0 z-[80] overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-[0_18px_45px_-12px_rgba(15,23,42,0.18),0_4px_10px_-2px_rgba(15,23,42,0.08)] dark:border-neutral-700 dark:bg-neutral-900 ${
+            placement === 'top' ? 'bottom-full mb-1' : 'mt-1'
+          }`}
         >
           {MEMORY_KINDS.map((k) => {
             const selected = k === value;
@@ -1064,6 +1068,7 @@ function MemorySection({
               value={newKind}
               onChange={setNewKind}
               label="New memory kind"
+              placement="top"
             />
           </div>
           <Button
