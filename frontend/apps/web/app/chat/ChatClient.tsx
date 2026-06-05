@@ -839,35 +839,34 @@ function ShareDialog({
   url: string;
   expiresUtc: string;
   copied: boolean;
-  /** A short preview of the conversation (first user prompt) so the share
-   *  card shows what the receiver is about to open, not just the title. */
   snippet: string;
   onCopy: () => void;
   onClose: () => void;
 }) {
   const encodedUrl = encodeURIComponent(url);
   const encodedTitle = encodeURIComponent(title);
-  // B2B share targets - Reddit / X don't fit an oil & gas operator product;
-  // Email + LinkedIn match how operators actually circulate notes (and a
-  // mailto: works on every device without OAuth).
-  const emailSubject = encodeURIComponent(`PetroBrain conversation: ${title}`);
+  const expiresLabel = new Date(expiresUtc).toLocaleDateString();
+  const emailSubject = encodeURIComponent(`PetroBrain handoff: ${title}`);
   const emailBody = encodeURIComponent(
-    `${title}\n\nOpen in PetroBrain (read-only, expires ${new Date(expiresUtc).toLocaleDateString()}):\n${url}\n`,
+    `${title}\n\nOpen this PetroBrain read-only handoff until ${expiresLabel}:\n${url}\n`,
   );
   const shareTargets: {
     label: string;
     href: string;
     icon: 'email' | 'linkedin';
+    detail: string;
   }[] = [
     {
       label: 'Email',
       href: `mailto:?subject=${emailSubject}&body=${emailBody}`,
       icon: 'email',
+      detail: 'Send brief',
     },
     {
       label: 'LinkedIn',
       href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}&title=${encodedTitle}`,
       icon: 'linkedin',
+      detail: 'Post update',
     },
   ];
 
@@ -876,84 +875,147 @@ function ShareDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/70 px-4 py-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-8 backdrop-blur-sm"
     >
-      <div className="w-full max-w-[34rem] rounded-[2rem] border border-white/10 bg-neutral-950 p-6 text-white shadow-[0_30px_100px_-30px_rgba(0,0,0,0.8)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 id="share-dialog-title" className="text-2xl font-semibold tracking-tight">
-              Share conversation
-            </h2>
-            <p className="mt-1 text-sm text-neutral-400">
-              Link copied. Anyone in your tenant with access can open this read-only snapshot until{' '}
-              {new Date(expiresUtc).toLocaleDateString()}.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close share dialog"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-300 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
-          >
-            <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden>
-              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-neutral-900">
-          <div className="relative min-h-[12rem] bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-5">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary-500/15 px-3 py-1 text-xs font-semibold text-primary-200 ring-1 ring-primary-400/20">
-              PetroBrain
-            </div>
-            <div className="mt-10 max-w-[80%] rounded-2xl bg-neutral-800/95 px-4 py-3 shadow-2xl">
-              <p className="line-clamp-2 text-lg font-semibold leading-snug">{title}</p>
-              {snippet ? (
-                <p className="mt-1.5 line-clamp-2 text-xs text-neutral-300">
-                  {snippet}
-                </p>
-              ) : null}
-              <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-neutral-500">
-                Read-only · expires {new Date(expiresUtc).toLocaleDateString()}
+      <div className="relative w-full max-w-[38rem] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-[0_28px_80px_-28px_rgba(15,23,42,0.55)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50">
+        <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-primary-500 via-cyan-500 to-emerald-500" />
+        <div className="border-b border-slate-200 bg-slate-50/90 px-6 py-5 dark:border-slate-800 dark:bg-slate-900/80">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-700 dark:border-primary-700/50 dark:bg-primary-900/30 dark:text-primary-200">
+                  PetroBrain handoff
+                </span>
+                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:border-cyan-700/50 dark:bg-cyan-900/30 dark:text-cyan-200">
+                  Read-only
+                </span>
+              </div>
+              <h2 id="share-dialog-title" className="text-2xl font-semibold tracking-tight">
+                Conversation package ready
+              </h2>
+              <p className="mt-1 max-w-[30rem] text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                Link copied. Teammates with access can open this snapshot until {expiresLabel}.
               </p>
             </div>
-            <div className="absolute bottom-4 right-5 text-xl font-bold tracking-tight">PetroBrain</div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close share dialog"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-white"
+            >
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-3 gap-3">
-          <button
-            type="button"
-            onClick={onCopy}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white px-3 py-4 text-neutral-950 transition hover:bg-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
-          >
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-950 text-white">
-              {copied ? (
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
-                  <path d="M4 10.5L8 14.5L16 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
-                  <path d="M8.5 11.5l3-3M7 6.5l-.8.8a4 4 0 005.7 5.7l.8-.8M13 13.5l.8-.8a4 4 0 00-5.7-5.7l-.8.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                </svg>
-              )}
-            </span>
-            <span className="text-sm font-medium">{copied ? 'Copied' : 'Copy link'}</span>
-          </button>
-          {shareTargets.map((target) => (
-            <a
-              key={target.label}
-              href={target.href}
-              target={target.icon === 'email' ? undefined : '_blank'}
-              rel="noopener noreferrer"
-              className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white px-3 py-4 text-neutral-950 transition hover:bg-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+        <div className="p-6">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-900">
+            <div className="grid grid-cols-[0.9rem_1fr] border-b border-slate-200 dark:border-slate-800">
+              <div className="bg-slate-900 dark:bg-slate-800" />
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                    Operations brief
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {title}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    Access
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    Tenant scoped
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 p-4 sm:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                  Conversation summary
+                </p>
+                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                  {snippet || title}
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    Status
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {copied ? 'Copied to clipboard' : 'Ready to copy'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    Expires
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {expiresLabel}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                PetroBrain operations console
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Share active</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <button
+              type="button"
+              onClick={onCopy}
+              className="flex h-14 items-center gap-3 rounded-xl border border-slate-200 bg-slate-900 px-4 text-left text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 dark:border-slate-700 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-950 text-white">
-                <ShareTargetIcon kind={target.icon} />
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 dark:bg-slate-950/10">
+                {copied ? (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+                    <path d="M4 10.5L8 14.5L16 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+                    <path d="M8.5 11.5l3-3M7 6.5l-.8.8a4 4 0 005.7 5.7l.8-.8M13 13.5l.8-.8a4 4 0 00-5.7-5.7l-.8.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                )}
               </span>
-              <span className="text-sm font-medium">{target.label}</span>
-            </a>
-          ))}
+              <span>
+                <span className="block text-sm font-semibold">{copied ? 'Copied' : 'Copy link'}</span>
+                <span className="block text-[11px] text-white/65 dark:text-slate-600">Clipboard</span>
+              </span>
+            </button>
+            {shareTargets.map((target) => (
+              <a
+                key={target.label}
+                href={target.href}
+                target={target.icon === 'email' ? undefined : '_blank'}
+                rel="noopener noreferrer"
+                className="flex h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-left text-slate-800 transition hover:border-primary-300 hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-primary-600 dark:hover:bg-primary-900/20"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200">
+                  <ShareTargetIcon kind={target.icon} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{target.label}</span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                    {target.detail}
+                  </span>
+                </span>
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </div>
