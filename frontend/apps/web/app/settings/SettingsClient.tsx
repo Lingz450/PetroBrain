@@ -19,6 +19,7 @@ import {
 } from '@/lib/chat/settings';
 import { useChatStore } from '@/lib/chat/store';
 import { canAdminister } from '@/lib/auth/roles';
+import { getOnboardingStatus, type AccountType } from '@/lib/onboarding/api';
 
 type Section =
   | 'general'
@@ -316,8 +317,12 @@ export function SettingsClient() {
 
   const token = useChatStore((s) => s.token);
   const principal = useChatStore((s) => s.principal);
+  const baseUrl = useChatStore((s) => s.apiBaseUrl);
   const hasChatHydrated = useChatStore((s) => s.hasHydrated);
   const setToken = useChatStore((s) => s.setToken);
+  // Account type drives whether company-only controls (e.g. Company settings)
+  // are shown. Individuals have no company workspace, so they never see them.
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
 
   const s = useSettingsStore();
   const enableNotifications = s.enableNotifications;
@@ -328,6 +333,15 @@ export function SettingsClient() {
 
   const ownerKey = useMemo(() => ownerKeyOf(principal), [principal]);
   const accountName = principal?.email ?? principal?.userId ?? '';
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    getOnboardingStatus({ baseUrl, token })
+      .then((status) => { if (active) setAccountType(status.account_type); })
+      .catch(() => { /* non-fatal: leave null so company-only controls stay hidden */ });
+    return () => { active = false; };
+  }, [token, baseUrl]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -606,7 +620,7 @@ export function SettingsClient() {
                     >
                       Review onboarding
                     </Link>
-                    {canAdminister(principal.role) ? (
+                    {accountType === 'company' && canAdminister(principal.role) ? (
                       <Link
                         href={'/admin/company' as Route}
                         className="rounded-full bg-primary-600 px-4 py-2 text-sm font-semibold text-white"
