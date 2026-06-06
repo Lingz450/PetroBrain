@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+from app.core.behaviour_policy import (
+    GLOBAL_BEHAVIOUR_POLICY,
+    module_prompt,
+    role_guidance,
+)
 from app.core.evidence import build_evidence_pack
 from app.core.llm_service import LLMResponse
 from app.research.source_governance import freshness_for, reliability_for
@@ -187,7 +192,7 @@ class AnswerSynthesisService:
         }
         return PreparedSynthesis(
             request=request,
-            system_prompt=_system_prompt(),
+            system_prompt=_system_prompt(request.module_name),
             messages=[
                 {
                     "role": "user",
@@ -337,6 +342,7 @@ def _normalize_sources(
             )
             row["snippet"] = _clean_evidence_text(row.get("snippet") or "")
             row.setdefault("reliability", "unknown")
+            row.setdefault("quality_score", _quality_score(row["reliability"]))
             row.setdefault("reliability_reason", "Pre-governed source.")
             row.setdefault("relevance", "high")
             row.setdefault("relevance_reason", "Selected by the governed research workflow.")
@@ -420,6 +426,7 @@ def _normalize_sources(
             {
                 **candidate,
                 "reliability": reliability,
+                "quality_score": _quality_score(reliability),
                 "reliability_reason": reliability_reason,
                 "relevance": relevance,
                 "relevance_reason": relevance_reason,
@@ -499,6 +506,16 @@ def _priority(
     return official + reliability_score + relevance_score + internal
 
 
+def _quality_score(reliability: str) -> int:
+    return {
+        "primary": 100,
+        "high": 85,
+        "medium": 65,
+        "low": 35,
+        "unknown": 20,
+    }.get(reliability, 20)
+
+
 def _citation(source: dict[str, Any]) -> dict[str, Any]:
     return {
         "source_id": source["id"],
@@ -507,6 +524,7 @@ def _citation(source: dict[str, Any]) -> dict[str, Any]:
         "clause": source.get("clause"),
         "url": source.get("url"),
         "reliability": source["reliability"],
+        "quality_score": source.get("quality_score", _quality_score(source["reliability"])),
         "freshness": source["freshness"],
     }
 
@@ -595,8 +613,10 @@ def _confidence(
     return "Low", "No governed source evidence was available for current claims."
 
 
-def _system_prompt() -> str:
-    return """You are PetroBrain, a domain-locked oil and gas AI analyst.
+def _system_prompt(module: str) -> str:
+    return f"""You are PetroBrain, a domain-locked oil and gas AI analyst.
+{GLOBAL_BEHAVIOUR_POLICY}
+{module_prompt(module)}
 You do not return raw search snippets as the final answer.
 Use retrieved evidence to write a complete, structured, professional answer.
 Cite current or source-dependent factual claims with exact source IDs such as [S1].
@@ -643,6 +663,7 @@ def _synthesis_prompt(
 CONTEXT
 Module: {request.module_name}
 User role: {request.user_role or 'not specified'}
+Role guidance: {role_guidance(request.user_role)}
 Jurisdiction: {request.jurisdiction or 'not specified'}
 Asset context: {request.asset_context or 'not specified'}
 
@@ -691,6 +712,54 @@ def _answer_structure(request: AnswerSynthesisRequest) -> str:
 ## What I could not verify
 ## Confidence
 ## Sources / citations"""
+    if request.module_name == "documents":
+        return """# Document review
+## Executive summary
+## Document scope
+## Key findings
+## Obligations and deadlines
+## Risks and gaps
+## Action items
+## What I checked
+## What I could not verify
+## Confidence
+## Sources / citations"""
+    if request.module_name == "emissions_mrv":
+        return """# Emissions / MRV output
+## Result summary
+## Inputs and boundaries
+## Method, formula, and units
+## Results
+## Assumptions and uncertainty
+## Reporting and verification notes
+## Practical next steps
+## What I checked
+## What I could not verify
+## Confidence
+## Sources / citations"""
+    if request.module_name == "well_control":
+        return """# Well control decision support
+## Immediate result
+## Inputs
+## Formula and working
+## Unit and reasonableness checks
+## Assumptions and limitations
+## Competent-person verification
+## What I checked
+## What I could not verify
+## Confidence"""
+    if request.module_name == "ptw":
+        return """# Permit-to-work draft
+## Work scope
+## Hazards
+## Controls and isolations
+## PPE and testing
+## Authorization and sign-off
+## Suspension and close-out
+## Site verification warning
+## What I checked
+## What I could not verify
+## Confidence"""
     if "sector" in text and "overview" in text:
         return """# Descriptive sector overview title
 ## Executive summary
@@ -703,6 +772,7 @@ def _answer_structure(request: AnswerSynthesisRequest) -> str:
 ## Current challenges
 ## Investment opportunities
 ## Risks and watchpoints
+## Practical next steps
 ## What I checked
 ## What I could not verify
 ## Confidence

@@ -154,3 +154,27 @@ def test_signup_token_works_against_protected_route():
     # engineer role is denied (only platform_admin/admin), proving the JWT was
     # decoded and the principal was rebuilt; we don't care about 200 here.
     assert chat_check.status_code == 403
+
+
+def test_signup_with_account_type_creates_isolated_workspace(tenants_repo, users_repo):
+    response = client.post(
+        "/auth/signup",
+        json={
+            "email": "company-owner@example.com",
+            "password": "correcthorse1",
+            "full_name": "Company Owner",
+            "account_type": "company",
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    tenant_id = body["principal"]["tenant_id"]
+    assert tenant_id.startswith("company-")
+    assert tenant_id != "demo"
+    assert body["principal"]["role"] == "tenant_owner"
+    assert body["onboarding_required"] is True
+    tenant = tenants_repo.get(tenant_id)
+    assert tenant["attributes"]["account_type"] == "company"
+    assert users_repo.get_by_email(
+        tenant_id=tenant_id, email="company-owner@example.com"
+    )["status"] == "active"

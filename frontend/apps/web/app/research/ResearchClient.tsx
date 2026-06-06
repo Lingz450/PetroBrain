@@ -14,6 +14,7 @@ import { ownerKeyOf } from '@/lib/chat/conversations';
 import { useProjectsStore } from '@/lib/chat/projects';
 import { SessionExpiredError } from '@/lib/chat/streamChat';
 import { useChatStore } from '@/lib/chat/store';
+import { canUseResearch } from '@/lib/auth/roles';
 import {
   approveResearchPlan,
   createResearchPlan,
@@ -33,8 +34,6 @@ import type {
 } from '@/lib/research/types';
 
 import { ThemedDatePicker } from './ThemedDatePicker';
-
-const ALLOWED_ROLES = new Set(['platform_admin', 'admin', 'engineer', 'hse']);
 
 const REPORT_TYPES = [
   ['technical_research_brief', 'Technical research brief'],
@@ -156,7 +155,7 @@ export function ResearchClient() {
 
   if (!hasHydrated) return <LoadingScreen />;
   if (!token || !principal) return <AuthGate />;
-  if (!ALLOWED_ROLES.has(principal.role)) {
+  if (!canUseResearch(principal.role)) {
     return (
       <main className="grid min-h-screen place-items-center px-6">
         <Banner tone="warn" title="Research access restricted">

@@ -31,6 +31,7 @@ import type {
 } from '@/lib/admin-learning/types';
 import { MEMORY_KINDS } from '@/lib/admin-learning/types';
 import { useChatStore } from '@/lib/chat/store';
+import { canAdminister } from '@/lib/auth/roles';
 import { SessionExpiredError } from '@/lib/chat/streamChat';
 
 /**
@@ -61,7 +62,7 @@ export function AdminLearningClient() {
       router.replace('/signin');
       return;
     }
-    if (principal.role !== 'admin' && principal.role !== 'platform_admin') {
+    if (!canAdminister(principal.role)) {
       router.replace('/chat');
     }
   }, [hasHydrated, token, principal, router]);
@@ -74,7 +75,7 @@ export function AdminLearningClient() {
     );
   }
   if (!token || !principal) return null;
-  if (principal.role !== 'admin' && principal.role !== 'platform_admin') return null;
+  if (!canAdminister(principal.role)) return null;
 
   return (
     <LearningView

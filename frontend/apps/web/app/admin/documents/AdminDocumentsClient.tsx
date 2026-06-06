@@ -2,6 +2,7 @@
 
 import { AuthGate } from '../../chat/components/AuthGate';
 import { useChatStore } from '@/lib/chat/store';
+import { canAdminister } from '@/lib/auth/roles';
 
 import { DocumentsScreen } from './components/DocumentsScreen';
 import { Forbidden } from './components/Forbidden';
@@ -28,7 +29,7 @@ export function AdminDocumentsClient() {
     );
   }
   if (!token || !principal) return <AuthGate />;
-  if (principal.role !== 'admin' && principal.role !== 'platform_admin') {
+  if (!canAdminister(principal.role)) {
     return <Forbidden role={principal.role} />;
   }
   return <DocumentsScreen />;

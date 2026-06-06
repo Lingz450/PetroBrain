@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
@@ -17,6 +18,7 @@ import {
   type Theme,
 } from '@/lib/chat/settings';
 import { useChatStore } from '@/lib/chat/store';
+import { canAdminister } from '@/lib/auth/roles';
 
 type Section =
   | 'general'
@@ -588,6 +590,27 @@ export function SettingsClient() {
                     <span className="text-neutral-800 dark:text-neutral-200">{principal.role}</span>
                     <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Tenant</span>
                     <span className="truncate font-mono text-neutral-800 dark:text-neutral-200">{principal.tenantId}</span>
+                  </div>
+                </Field>
+                <Field
+                  label="Oil and gas profile"
+                  description="Update your role, focus areas, use cases, jurisdiction, and workspace defaults."
+                >
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Link
+                      href={'/onboarding?edit=1' as Route}
+                      className="rounded-full border border-neutral-200 px-4 py-2 text-sm font-semibold hover:border-primary-300 hover:text-primary-700 dark:border-neutral-700"
+                    >
+                      Review onboarding
+                    </Link>
+                    {canAdminister(principal.role) ? (
+                      <Link
+                        href={'/admin/company' as Route}
+                        className="rounded-full bg-primary-600 px-4 py-2 text-sm font-semibold text-white"
+                      >
+                        Company settings
+                      </Link>
+                    ) : null}
                   </div>
                 </Field>
               </>

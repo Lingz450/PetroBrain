@@ -9,7 +9,23 @@
  * chat UI - i.e. things the OpenAPI client can't express directly.
  */
 
-export type Role = 'platform_admin' | 'admin' | 'engineer' | 'field' | 'hse';
+export type Role =
+  | 'platform_admin'
+  | 'admin'
+  | 'tenant_owner'
+  | 'company_admin'
+  | 'compliance_admin'
+  | 'hse_manager'
+  | 'emissions_lead'
+  | 'engineer'
+  | 'field'
+  | 'field_supervisor'
+  | 'operations_user'
+  | 'commercial_user'
+  | 'procurement_user'
+  | 'auditor'
+  | 'viewer'
+  | 'hse';
 
 export type Module =
   | 'general'
@@ -40,9 +56,10 @@ export interface Citation {
    * Source URL for web-sourced citations (Tavily). Absent / null for citations
    * pulled from the tenant's RAG corpus (those reference document + clause
    * inside the system instead of an external page).
-   */
+  */
   url?: string | null;
   reliability?: 'primary' | 'high' | 'medium' | 'low' | 'unknown' | null;
+  quality_score?: number | null;
   freshness?: 'current' | 'dated' | 'unknown' | null;
 }
 
@@ -56,6 +73,9 @@ export interface EvidenceSource {
   type: 'document' | 'web' | string;
   label: string;
   url?: string | null;
+  reliability?: 'primary' | 'high' | 'medium' | 'low' | 'unknown' | string;
+  quality_score?: number | null;
+  freshness?: 'current' | 'dated' | 'unknown' | string;
 }
 
 export interface EvidenceCalculation {
@@ -71,6 +91,7 @@ export interface EvidencePack {
   sources: EvidenceSource[];
   calculations: EvidenceCalculation[];
   safety: { requires_human_verification: boolean; message: string };
+  advisory?: { required: boolean; message: string };
 }
 
 export type ConfidenceLabel = 'high' | 'medium' | 'low' | 'unknown';

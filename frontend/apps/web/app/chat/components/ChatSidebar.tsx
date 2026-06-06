@@ -12,6 +12,7 @@ import type { Principal } from '@petrobrain/types';
 import { ownerKeyOf, useConversationsStore } from '@/lib/chat/conversations';
 import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
+import { canAdminister } from '@/lib/auth/roles';
 import { useChatStore } from '@/lib/chat/store';
 import type { Message, MessageAttachment } from '@/lib/chat/types';
 
@@ -1175,7 +1176,7 @@ function AdminNotificationBell() {
   const principal = useChatStore((s) => s.principal);
   const baseUrl = useChatStore((s) => s.apiBaseUrl);
   const [count, setCount] = useState(0);
-  const isAdmin = principal?.role === 'admin' || principal?.role === 'platform_admin';
+  const isAdmin = canAdminister(principal?.role);
 
   useEffect(() => {
     if (!token || !isAdmin) return;

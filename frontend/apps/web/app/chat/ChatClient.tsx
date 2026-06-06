@@ -531,13 +531,17 @@ export function ChatClient() {
           expireSession(e.reason);
         } else {
           streamer.flush();
-          const detail = e instanceof Error ? e.message : String(e);
+          const diagnostic = e instanceof Error ? e.message : String(e);
+          const detail = (
+            'PetroBrain could not complete the response. No operational action was '
+            + 'taken. Retry the request, or contact your administrator if the issue persists.'
+          );
           void reportError({
             baseUrl: apiBaseUrl,
             token,
             route: '/chat',
             error: e,
-            metadata: { kind: 'chat_stream', module: effectiveModule },
+            metadata: { kind: 'chat_stream', module: effectiveModule, diagnostic },
           });
           setError(detail);
           workingMessages = workingMessages.map((m) =>

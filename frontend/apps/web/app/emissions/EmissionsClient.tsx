@@ -2,11 +2,10 @@
 
 import { AuthGate } from '../chat/components/AuthGate';
 import { useChatStore } from '@/lib/chat/store';
+import { canUseEmissions } from '@/lib/auth/roles';
 
 import { EmissionsScreen } from './components/EmissionsScreen';
 import { RoleForbidden } from './components/RoleForbidden';
-
-const ALLOWED_ROLES = new Set(['platform_admin', 'admin', 'engineer', 'hse']);
 
 export function EmissionsClient() {
   const token = useChatStore((s) => s.token);
@@ -15,7 +14,7 @@ export function EmissionsClient() {
 
   if (!hasHydrated) return <HydrationLoader />;
   if (!token || !principal) return <AuthGate />;
-  if (!ALLOWED_ROLES.has(principal.role)) return <RoleForbidden role={principal.role} />;
+  if (!canUseEmissions(principal.role)) return <RoleForbidden role={principal.role} />;
   return <EmissionsScreen />;
 }
 

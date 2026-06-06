@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     asset_relationships_store_path: str = "data/asset_relationships.jsonl"
     tenants_store_path: str = "data/tenants.jsonl"
     users_store_path: str = "data/users.jsonl"
+    onboarding_store_path: str = "data/onboarding_profiles.jsonl"
+    invitations_store_path: str = "data/organization_invitations.jsonl"
     permits_store_path: str = "data/permits.jsonl"
     conversation_shares_store_path: str = "data/conversation_shares.jsonl"
     feedback_store_path: str = "data/feedback_events.jsonl"
@@ -172,6 +174,8 @@ class Settings(BaseSettings):
     default_signup_tenant_id: str = "demo"
     default_signup_tenant_name: str = "Demo tenant"
     default_signup_role: str = "engineer"
+    invitation_expiry_days: int = 7
+    invite_email_delivery_enabled: bool = False
     # Comma-separated list of emails that get auto-promoted to platform_admin
     # on first signup. Lets the founder bootstrap admin access without having
     # to edit the user store by hand. Lowercased + stripped before compare.

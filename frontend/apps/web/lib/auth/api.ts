@@ -16,6 +16,7 @@ export interface AuthPrincipalPayload {
 export interface AuthResponse {
   token: string;
   principal: AuthPrincipalPayload;
+  onboarding_required?: boolean;
 }
 
 export interface AuthErrorBody {
@@ -34,7 +35,7 @@ export class AuthError extends Error {
 async function postAuth(
   baseUrl: string,
   path: '/auth/signup' | '/auth/signin',
-  body: { email: string; password: string },
+  body: { email: string; password: string; account_type?: 'individual' | 'company'; full_name?: string },
   signal?: AbortSignal,
 ): Promise<AuthResponse> {
   const res = await fetch(`${baseUrl}${path}`, {
@@ -62,7 +63,7 @@ async function postAuth(
 
 export function signup(
   baseUrl: string,
-  body: { email: string; password: string },
+  body: { email: string; password: string; account_type?: 'individual' | 'company'; full_name?: string },
   signal?: AbortSignal,
 ): Promise<AuthResponse> {
   return postAuth(baseUrl, '/auth/signup', body, signal);

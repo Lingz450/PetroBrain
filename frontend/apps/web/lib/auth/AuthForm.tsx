@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import type { Route } from 'next';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { Logo } from '@petrobrain/ui';
@@ -25,7 +26,7 @@ const COPY: Record<AuthMode, {
   busy: string;
   switchPrompt: string;
   switchLabel: string;
-  switchHref: '/signin' | '/signup';
+  switchHref: '/signin' | '/signup/account-type';
   showConfirm: boolean;
 }> = {
   signin: {
@@ -36,7 +37,7 @@ const COPY: Record<AuthMode, {
     busy: 'Signing in...',
     switchPrompt: "Don't have an account?",
     switchLabel: 'Create one',
-    switchHref: '/signup',
+    switchHref: '/signup/account-type',
     showConfirm: false,
   },
   signup: {
@@ -72,6 +73,7 @@ function sessionExpiredCopy(reason: 'expired' | 'revoked' | 'invalid'): string {
 
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const apiBaseUrl = useChatStore((s) => s.apiBaseUrl);
   const setToken = useChatStore((s) => s.setToken);
   const sessionExpiredReason = useChatStore((s) => s.sessionExpiredReason);
@@ -128,8 +130,22 @@ export function AuthForm({ mode }: AuthFormProps) {
     const abortTimer = setTimeout(() => controller.abort(), 60_000);
     try {
       const cleanedEmail = email.trim();
+      const requestedType = searchParams.get('account_type');
+      const storedType = typeof window !== 'undefined'
+        ? sessionStorage.getItem('petrobrain-signup-account-type')
+        : null;
+      const accountType = requestedType === 'individual' || requestedType === 'company'
+        ? requestedType
+        : storedType === 'individual' || storedType === 'company'
+          ? storedType
+          : undefined;
       const res = mode === 'signup'
-        ? await signup(apiBaseUrl, { email: cleanedEmail, password }, controller.signal)
+        ? await signup(apiBaseUrl, {
+            email: cleanedEmail,
+            password,
+            full_name: name.trim(),
+            ...(accountType ? { account_type: accountType } : {}),
+          }, controller.signal)
         : await signin(apiBaseUrl, { email: cleanedEmail, password }, controller.signal);
       setToken(res.token, { ...res.principal, email: res.principal.email || cleanedEmail });
       clearSessionExpired();
@@ -139,7 +155,8 @@ export function AuthForm({ mode }: AuthFormProps) {
       if (mode === 'signup' && name.trim()) {
         setCallMeName(name.trim());
       }
-      router.push('/chat');
+      if (mode === 'signup') sessionStorage.removeItem('petrobrain-signup-account-type');
+      router.push((res.onboarding_required ? '/onboarding' : '/chat') as Route);
     } catch (err) {
       if (err instanceof AuthError) {
         setError(err.message);
@@ -309,7 +326,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           <p className="text-center text-xs text-neutral-500 dark:text-neutral-400">
             {copy.switchPrompt}{' '}
             <Link
-              href={copy.switchHref}
+              href={copy.switchHref as Route}
               className="font-semibold text-primary-700 hover:underline dark:text-primary-300"
             >
               {copy.switchLabel}

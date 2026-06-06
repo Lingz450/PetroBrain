@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Logo } from '@petrobrain/ui';
 import { useChatStore } from '@/lib/chat/store';
+import { canAdminister, canAudit } from '@/lib/auth/roles';
 import { listAdminTasks, listAudit, listNotifications, updateNotification } from '@/lib/admin-operations/api';
 
 export type AdminView = 'audit' | 'notifications' | 'safety' | 'tasks' | 'compliance';
@@ -15,12 +16,13 @@ export function AdminOperationsClient({ view }: { view: AdminView }) {
   const baseUrl = useChatStore((s) => s.apiBaseUrl);
   const hydrated = useChatStore((s) => s.hasHydrated);
   const [filter, setFilter] = useState('');
+  const allowed = view === 'audit' ? canAudit(principal?.role) : canAdminister(principal?.role);
   useEffect(() => {
     if (hydrated && (!token || !principal)) window.location.assign('/signin');
-    else if (hydrated && !['admin', 'platform_admin'].includes(principal?.role ?? '')) window.location.assign('/chat');
-  }, [hydrated, token, principal]);
+    else if (hydrated && !allowed) window.location.assign('/chat');
+  }, [allowed, hydrated, token, principal]);
   if (!hydrated) return <main className="grid min-h-screen place-items-center"><Logo size={40} glow /></main>;
-  if (!token || !principal || !['admin', 'platform_admin'].includes(principal.role)) return null;
+  if (!token || !principal || !allowed) return null;
   return <AdminViewContent view={view} baseUrl={baseUrl} token={token} filter={filter} setFilter={setFilter} />;
 }
 

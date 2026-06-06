@@ -1,8 +1,6 @@
 """Slice 4: glossary candidate extraction from per-tenant memories."""
 from __future__ import annotations
 
-import pytest
-
 from app.core.glossary_extractor import extract_candidates
 
 

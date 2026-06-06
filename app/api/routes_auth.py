@@ -14,6 +14,7 @@ invite-based ``/admin/tenants/{tenant_id}/users`` route.
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -48,11 +49,20 @@ def _validate_email(value: str) -> str:
 class SignupRequest(BaseModel):
     email: str
     password: str = Field(min_length=1)
+    account_type: str | None = None
+    full_name: str | None = Field(default=None, max_length=160)
 
     @field_validator("email")
     @classmethod
     def _email(cls, v: str) -> str:
         return _validate_email(v)
+
+    @field_validator("account_type")
+    @classmethod
+    def _account_type(cls, value: str | None) -> str | None:
+        if value is not None and value not in {"individual", "company"}:
+            raise ValueError("account_type must be individual or company")
+        return value
 
 
 class SigninRequest(BaseModel):
@@ -76,6 +86,7 @@ class AuthPrincipal(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     principal: AuthPrincipal
+    onboarding_required: bool = False
 
 
 def _ensure_default_tenant(tenant_id: str, name: str) -> None:
@@ -154,11 +165,27 @@ async def signup(req: SignupRequest) -> AuthResponse:
         raise HTTPException(status_code=500, detail="invalid signup role")
 
     _validate_password(req.password)
-
-    tenant_id = settings.default_signup_tenant_id
-    _ensure_default_tenant(tenant_id, settings.default_signup_tenant_name)
-
     users = get_users_repository()
+    if req.account_type and users.find_by_email_any_tenant(req.email) is not None:
+        raise HTTPException(status_code=409, detail="email is already registered")
+
+    if req.account_type:
+        tenant_id = f"{req.account_type}-{uuid4().hex[:12]}"
+        get_tenants_repository().create(
+            id=tenant_id,
+            name=(req.full_name or "New PetroBrain workspace").strip(),
+            attributes={
+                "account_type": req.account_type,
+                "workspace_type": req.account_type,
+                "onboarding_status": "in_progress",
+                "created_by_signup": True,
+            },
+        )
+        role = "tenant_owner"
+    else:
+        tenant_id = settings.default_signup_tenant_id
+        _ensure_default_tenant(tenant_id, settings.default_signup_tenant_name)
+
     # Friendlier error than the repo's generic ValueError so the frontend can
     # surface "already registered" without parsing the message.
     if users.get_by_email(tenant_id=tenant_id, email=req.email) is not None:
@@ -188,15 +215,19 @@ async def signup(req: SignupRequest) -> AuthResponse:
         response={"user_id": record["id"]},
         metadata={"flow": "self_serve"},
     ))
-    return AuthResponse(token=token, principal=_to_principal_payload(record))
+    return AuthResponse(
+        token=token,
+        principal=_to_principal_payload(record),
+        onboarding_required=bool(req.account_type),
+    )
 
 
 @router.post("/signin", response_model=AuthResponse)
 async def signin(req: SigninRequest) -> AuthResponse:
     settings = get_settings()
-    tenant_id = settings.default_signup_tenant_id
     users = get_users_repository()
-    record = users.get_by_email(tenant_id=tenant_id, email=req.email)
+    record = users.find_by_email_any_tenant(req.email)
+    tenant_id = record["tenant_id"] if record else settings.default_signup_tenant_id
 
     # Identical 401 for unknown email vs wrong password vs deactivated account
     # - don't leak which one to the network.
@@ -239,7 +270,16 @@ async def signin(req: SigninRequest) -> AuthResponse:
         response={"user_id": record["id"]},
         metadata={},
     ))
-    return AuthResponse(token=token, principal=_to_principal_payload(record))
+    tenant = get_tenants_repository().get(record["tenant_id"]) or {}
+    onboarding_required = (
+        (tenant.get("attributes") or {}).get("onboarding_status") != "completed"
+        and bool((tenant.get("attributes") or {}).get("created_by_signup"))
+    )
+    return AuthResponse(
+        token=token,
+        principal=_to_principal_payload(record),
+        onboarding_required=onboarding_required,
+    )
 
 
 @router.post("/logout", status_code=204)

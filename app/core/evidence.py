@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.behaviour_policy import contract_for
 
 _TOOL_LABELS = {
     "build_kill_sheet": "Kill sheet calculation",
@@ -71,6 +72,7 @@ def build_evidence_pack(
         module=module,
         offline_mode=offline_mode,
     )
+    contract = contract_for(module)
     return {
         "confidence": confidence,
         "checked": checked,
@@ -82,6 +84,14 @@ def build_evidence_pack(
             "message": (
                 "Verify safety-critical outputs with the competent person before action."
                 if safety_required else ""
+            ),
+        },
+        "advisory": {
+            "required": contract.decision_support,
+            "message": (
+                "Draft / decision support. Review with the responsible competent "
+                "technical, HSE, regulatory, legal, financial, or operational authority."
+                if contract.decision_support else ""
             ),
         },
     }
@@ -104,6 +114,9 @@ def _source_entries(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         entry = {
             "type": source_type,
+            "reliability": reliability or "unknown",
+            "quality_score": citation.get("quality_score"),
+            "freshness": _safe_text(citation.get("freshness")) or "unknown",
             "label": _source_label(
                 title=title,
                 revision=revision,

@@ -27,6 +27,7 @@ from app.core.answer_synthesis import (
     calculation_results_from_tools,
     web_results_from_tools,
 )
+from app.core.behaviour_policy import needs_governed_synthesis, professional_error
 from app.core.evidence import build_evidence_pack
 from app.core.guardrails import post_check, pre_check
 from app.core.llm_service import LLMConfigurationError, LLMResponse, LLMService
@@ -450,7 +451,7 @@ class Orchestrator:
             )
         except LLMConfigurationError as exc:
             return Turn(
-                answer=f"LLM provider is not configured: {exc}",
+                answer=professional_error("llm_configuration"),
                 flags=[*flags, "llm_configuration_error"],
                 audit={
                     "tenant_id": tenant_id, "module": module, "stopped_at": "llm_config",
@@ -480,10 +481,7 @@ class Orchestrator:
                 if not schema_fn:
                     flags.append("unknown_tool_call")
                     return Turn(
-                        answer=(
-                            "I could not complete the request because the model asked "
-                            f"for an unavailable tool: {tool_name}."
-                        ),
+                        answer=professional_error("unknown_tool"),
                         tool_results=tool_results,
                         flags=flags,
                         audit={
@@ -508,10 +506,7 @@ class Orchestrator:
                 except (TypeError, ValueError) as exc:
                     flags.append("tool_input_error")
                     return Turn(
-                        answer=(
-                            "I could not complete the deterministic tool call because "
-                            f"the inputs were invalid: {exc}"
-                        ),
+                        answer=professional_error("tool_input", str(exc)),
                         tool_results=tool_results,
                         flags=flags,
                         audit={
@@ -564,7 +559,7 @@ class Orchestrator:
                 )
             except LLMConfigurationError as exc:
                 return Turn(
-                    answer=f"LLM provider is not configured: {exc}",
+                    answer=professional_error("llm_configuration"),
                     tool_results=tool_results,
                     flags=[*flags, "llm_configuration_error"],
                     audit={
@@ -577,6 +572,56 @@ class Orchestrator:
                     evidence_pack=self._evidence_pack(
                         citations=retrieved_citations,
                         tool_results=tool_results,
+                        flags=[*flags, "llm_configuration_error"],
+                        module=module,
+                        offline_mode=offline_mode,
+                        disable_web_search=disable_web_search,
+                    ),
+                )
+            flags = list(dict.fromkeys([*flags, *synthesis_result.flags]))
+            retrieved_citations = synthesis_result.citations
+            resp = LLMResponse(
+                text=synthesis_result.final_answer_markdown,
+                tool_calls=[],
+                usage=synthesis_result.usage,
+                model=synthesis_result.model,
+            )
+        elif needs_governed_synthesis(
+            module=module,
+            user_text=user_text,
+            has_evidence=bool(retrieved_internal_chunks),
+            has_calculations=False,
+        ):
+            try:
+                synthesis_result = await self.synthesis.synthesize(
+                    AnswerSynthesisRequest(
+                        original_question=user_text,
+                        tenant_id=tenant_id,
+                        user_role=user_role,
+                        jurisdiction=jurisdiction,
+                        asset_context=prompt_asset_context,
+                        retrieved_internal_chunks=retrieved_internal_chunks,
+                        safety_flags=flags,
+                        module_name=module,
+                        web_search_enabled=not disable_web_search,
+                    ),
+                    thinking_mode=thinking_mode,
+                )
+            except LLMConfigurationError as exc:
+                return Turn(
+                    answer=professional_error("llm_configuration"),
+                    flags=[*flags, "llm_configuration_error"],
+                    audit={
+                        "tenant_id": tenant_id,
+                        "module": module,
+                        "stopped_at": "llm_config_during_evidence_synthesis",
+                        "reason": str(exc),
+                        "retrieved_clauses": retrieved_clauses,
+                    },
+                    citations=retrieved_citations,
+                    evidence_pack=self._evidence_pack(
+                        citations=retrieved_citations,
+                        tool_results=[],
                         flags=[*flags, "llm_configuration_error"],
                         module=module,
                         offline_mode=offline_mode,
@@ -988,6 +1033,65 @@ class Orchestrator:
                         yield {"event": "token", "data": {"text": chunk}}
                     model = synthesis_result.model
                     usage = synthesis_result.usage
+                elif answer_text and needs_governed_synthesis(
+                    module=module,
+                    user_text=user_text,
+                    has_evidence=bool(retrieved_internal_chunks),
+                    has_calculations=False,
+                ):
+                    yield progress.event(
+                        "evidence_pack_started", "evidence", "Building evidence pack..."
+                    )
+                    prepared = self.synthesis.prepare(
+                        AnswerSynthesisRequest(
+                            original_question=user_text,
+                            tenant_id=tenant_id,
+                            user_role=user_role,
+                            jurisdiction=jurisdiction,
+                            asset_context=prompt_asset_context,
+                            retrieved_internal_chunks=retrieved_internal_chunks,
+                            safety_flags=flags,
+                            module_name=module,
+                            web_search_enabled=not disable_web_search,
+                        )
+                    )
+                    yield progress.event(
+                        "evidence_pack_completed",
+                        "evidence",
+                        "Evidence pack built.",
+                        "completed",
+                        metadata={"source_count": len(prepared.sources)},
+                        confidence={
+                            "label": prepared.confidence_label,
+                            "reason": prepared.confidence_reason,
+                        },
+                    )
+                    yield progress.event(
+                        "synthesis_started", "synthesis", _synthesis_message(module)
+                    )
+                    yield progress.event(
+                        "citation_check_started", "citations", "Validating citations..."
+                    )
+                    synthesis_result = await self.synthesis.synthesize(
+                        prepared.request, thinking_mode=thinking_mode
+                    )
+                    yield progress.event(
+                        "citation_check_completed",
+                        "citations",
+                        f"Validated {len(synthesis_result.citations)} citation"
+                        f"{'' if len(synthesis_result.citations) == 1 else 's'}.",
+                        "completed",
+                        metadata={"citation_count": len(synthesis_result.citations)},
+                    )
+                    flags = list(dict.fromkeys([*flags, *synthesis_result.flags]))
+                    retrieved_citations = synthesis_result.citations
+                    answer_text = synthesis_result.final_answer_markdown
+                    for citation in retrieved_citations:
+                        yield {"event": "citation", "data": citation}
+                    for chunk in _answer_chunks(answer_text):
+                        yield {"event": "token", "data": {"text": chunk}}
+                    model = synthesis_result.model
+                    usage = synthesis_result.usage
                 elif answer_text:
                     for citation in retrieved_citations:
                         yield {"event": "citation", "data": citation}
@@ -1005,17 +1109,74 @@ class Orchestrator:
                     _synthesis_message(module),
                 )
                 final = {"text": "", "tool_calls": [], "usage": {}, "model": ""}
+                governed_direct = needs_governed_synthesis(
+                    module=module,
+                    user_text=user_text,
+                    has_evidence=bool(retrieved_internal_chunks),
+                    has_calculations=False,
+                )
                 async for event in self._stream_llm_to_events(
-                    system, messages, None, final, emit=True,
+                    system, messages, None, final, emit=not governed_direct,
                     thinking_mode=thinking_mode,
                 ):
                     yield event
                 answer_text = final["text"]
                 model = final["model"]
                 usage = final["usage"]
+                if governed_direct:
+                    yield progress.event(
+                        "evidence_pack_started", "evidence", "Building evidence pack..."
+                    )
+                    direct_request = AnswerSynthesisRequest(
+                        original_question=user_text,
+                        tenant_id=tenant_id,
+                        user_role=user_role,
+                        jurisdiction=jurisdiction,
+                        asset_context=prompt_asset_context,
+                        retrieved_internal_chunks=retrieved_internal_chunks,
+                        safety_flags=flags,
+                        module_name=module,
+                        web_search_enabled=not disable_web_search,
+                    )
+                    direct_prepared = self.synthesis.prepare(direct_request)
+                    yield progress.event(
+                        "evidence_pack_completed",
+                        "evidence",
+                        "Evidence pack built.",
+                        "completed",
+                        metadata={"source_count": len(direct_prepared.sources)},
+                        confidence={
+                            "label": direct_prepared.confidence_label,
+                            "reason": direct_prepared.confidence_reason,
+                        },
+                    )
+                    yield progress.event(
+                        "citation_check_started", "citations", "Validating citations..."
+                    )
+                    synthesis_result = await self.synthesis.synthesize(
+                        direct_request,
+                        thinking_mode=thinking_mode,
+                    )
+                    yield progress.event(
+                        "citation_check_completed",
+                        "citations",
+                        f"Validated {len(synthesis_result.citations)} citation"
+                        f"{'' if len(synthesis_result.citations) == 1 else 's'}.",
+                        "completed",
+                        metadata={"citation_count": len(synthesis_result.citations)},
+                    )
+                    flags = list(dict.fromkeys([*flags, *synthesis_result.flags]))
+                    retrieved_citations = synthesis_result.citations
+                    answer_text = synthesis_result.final_answer_markdown
+                    for citation in retrieved_citations:
+                        yield {"event": "citation", "data": citation}
+                    for chunk in _answer_chunks(answer_text):
+                        yield {"event": "token", "data": {"text": chunk}}
+                    model = synthesis_result.model
+                    usage = synthesis_result.usage
         except LLMConfigurationError as exc:
             flags.append("llm_configuration_error")
-            answer = f"LLM provider is not configured: {exc}"
+            answer = professional_error("llm_configuration")
             yield {"event": "flag", "data": {"flag": "llm_configuration_error"}}
             yield {"event": "token", "data": {"text": answer}}
             yield {"event": "done", "data": {

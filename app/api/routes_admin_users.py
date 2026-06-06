@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import (
     Principal,
+    is_tenant_admin,
     get_principal,
     require_tenant_access,
 )
@@ -39,7 +40,7 @@ def _require_tenant_admin(principal: Principal, tenant_id: str) -> None:
     """Allow platform_admin (any tenant) or tenant admin (only own tenant)."""
     if principal.role == "platform_admin":
         return
-    if principal.role == "admin":
+    if is_tenant_admin(principal):
         require_tenant_access(principal, tenant_id)
         return
     raise HTTPException(status_code=403, detail="role not allowed for principal")

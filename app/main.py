@@ -28,6 +28,7 @@ from app.api import (
     routes_emissions,
     routes_errors,
     routes_research,
+    routes_onboarding,
     routes_tasks,
     routes_wellcontrol,
 )
@@ -111,6 +112,10 @@ app.include_router(routes_admin_chunk_weights.router)
 app.include_router(routes_errors.report_router)
 app.include_router(routes_errors.admin_router)
 app.include_router(routes_research.router)
+app.include_router(routes_onboarding.onboarding_router)
+app.include_router(routes_onboarding.organizations_router)
+app.include_router(routes_onboarding.invitations_router)
+app.include_router(routes_onboarding.company_admin_router)
 app.include_router(routes_tasks.router)
 app.include_router(routes_tasks.admin_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

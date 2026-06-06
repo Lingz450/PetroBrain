@@ -87,6 +87,8 @@ _SAFETY_RULES: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
         (
             r"\b(?:disable|remove|ignore|bypass)\b.{0,35}\b(?:guardrails?|safety banners?|audit logging|safety rules?)\b",
             r"\breveal (?:the )?(?:system prompt|hidden prompt|developer instructions)\b",
+            r"\b(?:reveal|show|print|expose)\b.{0,30}\b(?:chain[- ]of[- ]thought|"
+            r"private reasoning|hidden reasoning|internal reasoning)\b",
             r"\bignore previous instructions\b.{0,35}\b(?:guardrails?|system prompt|safety)\b",
         ),
     ),

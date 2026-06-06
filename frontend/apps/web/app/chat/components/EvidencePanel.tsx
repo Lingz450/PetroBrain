@@ -21,6 +21,11 @@ export function EvidencePanel({ evidence }: { evidence: EvidencePack | null }) {
       </summary>
 
       <div className="mt-3 space-y-3 text-neutral-700 dark:text-neutral-300">
+        {evidence.advisory?.required ? (
+          <p className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1.5 text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-100">
+            {evidence.advisory.message}
+          </p>
+        ) : null}
         {evidence.safety.requires_human_verification ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
             {evidence.safety.message}
@@ -76,16 +81,28 @@ function Sources({ sources }: { sources: EvidencePack['sources'] }) {
                 className="inline-flex rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-primary-300 hover:text-primary-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
               >
                 {source.label}
+                <SourceQuality source={source} />
               </a>
             ) : (
               <span className="inline-flex rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
                 {source.label}
+                <SourceQuality source={source} />
               </span>
             )}
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+function SourceQuality({ source }: { source: EvidencePack['sources'][number] }) {
+  if (!source.reliability) return null;
+  return (
+    <span className="ml-1 border-l border-neutral-300 pl-1 text-[9px] uppercase text-neutral-500 dark:border-neutral-600 dark:text-neutral-400">
+      {source.reliability}
+      {typeof source.quality_score === 'number' ? ` ${source.quality_score}/100` : ''}
+    </span>
   );
 }
 

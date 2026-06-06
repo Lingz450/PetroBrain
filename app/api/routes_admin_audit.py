@@ -29,7 +29,7 @@ from app.models.schemas import AuditExportRequest
 
 
 router = APIRouter(prefix="/admin/audit", tags=["admin", "audit"])
-_admin_or_platform = require_role("admin", "platform_admin")
+_admin_or_platform = require_role("admin", "platform_admin", "auditor")
 
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 50

@@ -77,6 +77,7 @@ export type StreamEvent =
         clause: string | null;
         url?: string | null;
         reliability?: 'primary' | 'high' | 'medium' | 'low' | 'unknown' | null;
+        quality_score?: number | null;
         freshness?: 'current' | 'dated' | 'unknown' | null;
       };
     }

@@ -50,10 +50,15 @@ def test_non_streaming_chat_returns_citations():
                     json={"message": "explain the shift handover procedure", "module": "general"})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["citations"] == [
-        {"title": "Ops SOP", "revision": "B", "clause": "7.4"},
-        {"title": "NUPRC Guideline", "revision": "2024", "clause": "3.1"},
+    assert [
+        (row["title"], row["revision"], row["clause"])
+        for row in body["citations"]
+    ] == [
+        ("Ops SOP", "B", "7.4"),
+        ("NUPRC Guideline", "2024", "3.1"),
     ]
+    assert all(row["reliability"] == "primary" for row in body["citations"])
+    assert all(row["quality_score"] == 100 for row in body["citations"])
 
 
 def test_citations_empty_without_retriever():

@@ -15,7 +15,38 @@ from app.core import neon_auth
 
 logger = logging.getLogger(__name__)
 
-VALID_ROLES = {"platform_admin", "admin", "engineer", "field", "hse"}
+VALID_ROLES = {
+    "platform_admin",
+    "admin",
+    "tenant_owner",
+    "company_admin",
+    "compliance_admin",
+    "hse_manager",
+    "emissions_lead",
+    "engineer",
+    "field",
+    "field_supervisor",
+    "operations_user",
+    "commercial_user",
+    "procurement_user",
+    "auditor",
+    "viewer",
+    "hse",
+}
+
+ROLE_CAPABILITY = {
+    "tenant_owner": "admin",
+    "company_admin": "admin",
+    "compliance_admin": "admin",
+    "hse_manager": "hse",
+    "emissions_lead": "engineer",
+    "field_supervisor": "field",
+    "operations_user": "engineer",
+    "commercial_user": "engineer",
+    "procurement_user": "engineer",
+    "auditor": "auditor",
+    "viewer": "viewer",
+}
 
 
 @dataclass
@@ -161,7 +192,7 @@ def require_role(*roles: str) -> Callable[[Principal], Principal]:
         raise ValueError(f"unknown roles: {sorted(unknown)}")
 
     def checker(principal: Principal = Depends(get_principal)) -> Principal:
-        if principal.role not in allowed:
+        if principal.role not in allowed and canonical_role(principal.role) not in allowed:
             raise HTTPException(status_code=403, detail="role not allowed for principal")
         return principal
 
@@ -194,6 +225,14 @@ def require_tenant_access(principal: Principal, tenant_id: str) -> None:
 
 def is_platform_admin(principal: Principal) -> bool:
     return principal.role == "platform_admin"
+
+
+def canonical_role(role: str) -> str:
+    return ROLE_CAPABILITY.get(role, role)
+
+
+def is_tenant_admin(principal: Principal) -> bool:
+    return canonical_role(principal.role) == "admin"
 
 
 def _jwt_key_and_algorithm(settings) -> tuple[str, str]:
