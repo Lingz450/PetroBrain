@@ -66,15 +66,25 @@ export function AccountTypeClient() {
                 onClick={() => setSelected(option.value)}
                 className={`min-h-52 rounded-2xl border p-6 text-left shadow-sm transition ${
                   active
-                    ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200 dark:bg-primary-950/40 dark:ring-primary-800'
+                    ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200'
                     : 'border-neutral-200 bg-white hover:border-primary-300 dark:border-neutral-800 dark:bg-neutral-900'
                 }`}
               >
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+                {/* The active card is always the light cream surface, so its text
+                    is forced dark in every theme - inactive cards follow the theme. */}
+                <span className={`text-[11px] font-semibold uppercase tracking-wider ${
+                  active ? 'text-primary-700' : 'text-primary-600 dark:text-primary-400'
+                }`}>
                   {option.eyebrow}
                 </span>
-                <span className="mt-5 block text-xl font-semibold">{option.title}</span>
-                <span className="mt-2 block text-sm leading-6 text-neutral-500 dark:text-neutral-400">
+                <span className={`mt-5 block text-xl font-semibold ${
+                  active ? 'text-neutral-900' : 'text-neutral-900 dark:text-neutral-100'
+                }`}>
+                  {option.title}
+                </span>
+                <span className={`mt-2 block text-sm leading-6 ${
+                  active ? 'text-neutral-600' : 'text-neutral-500 dark:text-neutral-400'
+                }`}>
                   {option.description}
                 </span>
                 <span className={`mt-6 inline-flex h-6 w-6 items-center justify-center rounded-full border ${
