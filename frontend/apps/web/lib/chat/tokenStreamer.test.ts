@@ -69,6 +69,52 @@ describe('createTokenStreamer', () => {
     expect(applied.join('')).toBe('Hello world! 12345');
   });
 
+  it('finish() waits for paced rendering instead of dumping the buffer', async () => {
+    const { sched, step } = makeStepper();
+    const applied: string[] = [];
+    const streamer = createTokenStreamer({
+      applyChars: (chars) => applied.push(chars),
+      charsPerSecond: 250,
+      scheduler: sched,
+    });
+
+    streamer.push('a'.repeat(100));
+    let finished = false;
+    const completion = streamer.finish().then(() => {
+      finished = true;
+    });
+
+    step();
+    await Promise.resolve();
+    expect(applied.join('').length).toBeGreaterThan(0);
+    expect(applied.join('').length).toBeLessThan(100);
+    expect(finished).toBe(false);
+
+    for (let i = 0; i < 40 && streamer.isActive(); i += 1) step();
+    await completion;
+    expect(applied.join('')).toBe('a'.repeat(100));
+    expect(finished).toBe(true);
+  });
+
+  it('finish() can be aborted while buffered text is still draining', async () => {
+    const { sched, step } = makeStepper();
+    const applied: string[] = [];
+    const controller = new AbortController();
+    const streamer = createTokenStreamer({
+      applyChars: (chars) => applied.push(chars),
+      scheduler: sched,
+    });
+
+    streamer.push('a'.repeat(100));
+    const completion = streamer.finish(controller.signal);
+    step();
+    controller.abort();
+
+    await expect(completion).rejects.toMatchObject({ name: 'AbortError' });
+    streamer.stop();
+    expect(applied.join('').length).toBeLessThan(100);
+  });
+
   it('stop() drops what is buffered (used on abort)', () => {
     const { sched } = makeStepper();
     const applied: string[] = [];

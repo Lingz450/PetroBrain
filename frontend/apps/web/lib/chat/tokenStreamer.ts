@@ -15,10 +15,11 @@
  *
  * Semantics:
  *   - push(text) - append text to the buffer; schedule a frame.
+ *   - finish()   - wait for the buffer to drain at the normal paced rate.
+ *                  Called when the network stream completes successfully.
  *   - flush()    - deliver everything still in the buffer immediately.
- *                  Called on 'done' so the final assistant text is whole
- *                  before downstream logic (canvas auto-open, notifications,
- *                  feedback chip activation) reads it.
+ *                  Reserved for abort/error paths where waiting would be
+ *                  misleading or keep the UI stuck.
  *   - stop()     - drop whatever's buffered. Called when the stream errors
  *                  out and the partial chars should not appear.
  */
@@ -42,6 +43,7 @@ export interface Scheduler {
 
 export interface TokenStreamer {
   push(text: string): void;
+  finish(signal?: AbortSignal): Promise<void>;
   flush(): void;
   stop(): void;
   /** True while there are chars buffered or a frame is scheduled. */
@@ -56,6 +58,23 @@ export function createTokenStreamer(opts: TokenStreamerOptions): TokenStreamer {
   let buffer = '';
   let scheduledId: unknown = null;
   let lastTick = 0;
+  let drainWaiters: Array<{
+    resolve: () => void;
+    signal?: AbortSignal;
+    onAbort?: () => void;
+  }> = [];
+
+  function resolveDrains(): void {
+    if (buffer || scheduledId != null) return;
+    const waiters = drainWaiters;
+    drainWaiters = [];
+    for (const waiter of waiters) {
+      if (waiter.signal && waiter.onAbort) {
+        waiter.signal.removeEventListener('abort', waiter.onAbort);
+      }
+      waiter.resolve();
+    }
+  }
 
   function schedule(): void {
     if (scheduledId != null) return;
@@ -79,6 +98,7 @@ export function createTokenStreamer(opts: TokenStreamerOptions): TokenStreamer {
     buffer = buffer.slice(chars);
     opts.applyChars(head);
     if (buffer) schedule();
+    else resolveDrains();
   }
 
   return {
@@ -86,6 +106,28 @@ export function createTokenStreamer(opts: TokenStreamerOptions): TokenStreamer {
       if (!text) return;
       buffer += text;
       schedule();
+    },
+    finish(signal?: AbortSignal): Promise<void> {
+      if (signal?.aborted) {
+        return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+      }
+      if (!buffer && scheduledId == null) return Promise.resolve();
+      return new Promise<void>((resolve, reject) => {
+        const waiter: {
+          resolve: () => void;
+          signal?: AbortSignal;
+          onAbort?: () => void;
+        } = { resolve };
+        if (signal) {
+          waiter.signal = signal;
+          waiter.onAbort = () => {
+            drainWaiters = drainWaiters.filter((candidate) => candidate !== waiter);
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          };
+          signal.addEventListener('abort', waiter.onAbort, { once: true });
+        }
+        drainWaiters.push(waiter);
+      });
     },
     flush(): void {
       if (scheduledId != null) {
@@ -97,6 +139,7 @@ export function createTokenStreamer(opts: TokenStreamerOptions): TokenStreamer {
         buffer = '';
       }
       lastTick = 0;
+      resolveDrains();
     },
     stop(): void {
       if (scheduledId != null) {
@@ -105,6 +148,7 @@ export function createTokenStreamer(opts: TokenStreamerOptions): TokenStreamer {
       }
       buffer = '';
       lastTick = 0;
+      resolveDrains();
     },
     isActive(): boolean {
       return buffer.length > 0 || scheduledId != null;

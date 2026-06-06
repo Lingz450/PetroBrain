@@ -427,9 +427,9 @@ export function ChatClient() {
       // Paced token render. The SSE 'token' events get pushed into this
       // streamer instead of being applied immediately; the streamer drains
       // chars at ~250/s with acceleration when the model bursts ahead, so
-      // the cursor moves smoothly the way Claude/ChatGPT do. Flushed on
-      // 'done' so the final assistant text is whole before notifications,
-      // canvas auto-open, and the feedback chip activation read it.
+      // the cursor moves smoothly the way Claude/ChatGPT do. The terminal
+      // event is held until the buffer drains naturally; otherwise a fast
+      // model or buffered proxy response would flash the whole answer at once.
       const streamer = createTokenStreamer({
         applyChars: (chars) => {
           workingMessages = workingMessages.map((m) =>
@@ -442,6 +442,7 @@ export function ChatClient() {
       });
 
       try {
+        let doneEvent: Extract<StreamEvent, { event: 'done' }> | null = null;
         await streamChat({
           baseUrl: apiBaseUrl,
           token,
@@ -460,30 +461,30 @@ export function ChatClient() {
               streamer.push(event.data.text);
               return;
             }
-            // Everything else (citation, tool_call, tool_result, flag,
-            // done) needs the latest text in place before it lands - so
-            // flush any buffered chars first, then apply the event.
-            streamer.flush();
+            if (event.event === 'done') {
+              doneEvent = event;
+              return;
+            }
+            // Citations, tool activity, and flags are metadata. They can
+            // render immediately without forcing buffered answer text out.
             workingMessages = applyEvent(workingMessages, assistantId, event);
             setMessagesInStore(convoId!, workingMessages, ownerKey);
           },
         });
-        streamer.flush();
+        await streamer.finish(controller.signal);
+        if (doneEvent) {
+          workingMessages = applyEvent(workingMessages, assistantId, doneEvent);
+          setMessagesInStore(convoId!, workingMessages, ownerKey);
+        }
         notifyAnswerReady(notificationTitle);
       } catch (e) {
-        // Always flush partial text - the user should see whatever did
-        // stream in, both for abort (their decision) and error (so they
-        // can see how far it got). For session-expired we also flush
-        // because the buffered chars represent work the server already
-        // sent before the token expired.
-        streamer.flush();
         const wasUserAbort =
           e instanceof DOMException && e.name === 'AbortError';
         const sessionExpired = e instanceof SessionExpiredError;
         if (wasUserAbort) {
-          // User clicked Stop. Keep whatever text streamed in, mark the
-          // assistant turn finished, and don't surface a red error banner -
-          // ChatGPT/Claude behave the same way.
+          // User clicked Stop. Drop text that was received but not yet shown,
+          // keep the visible partial answer, and don't surface an error.
+          streamer.stop();
           workingMessages = workingMessages.map((m) =>
             m.id === assistantId && m.role === 'assistant'
               ? { ...m, streaming: false }
@@ -491,6 +492,7 @@ export function ChatClient() {
           );
           setMessagesInStore(convoId!, workingMessages, ownerKey);
         } else if (sessionExpired) {
+          streamer.flush();
           // Token is no longer valid. Mark the half-streamed assistant turn
           // as finished (no red error chip), clear the session so the
           // AuthGate kicks in, and let the signin page surface a friendly
@@ -504,6 +506,7 @@ export function ChatClient() {
           setMessagesInStore(convoId!, workingMessages, ownerKey);
           expireSession(e.reason);
         } else {
+          streamer.flush();
           const detail = e instanceof Error ? e.message : String(e);
           void reportError({
             baseUrl: apiBaseUrl,
