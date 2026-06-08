@@ -73,7 +73,7 @@ export interface ResearchRun {
   plan: ResearchPlanStep[];
   sources: ResearchSource[];
   report: ResearchReport | null;
-  evidence_pack: EvidencePack;
+  evidence_pack: EvidencePack | null;
   flags: string[];
   error?: string | null;
   created_utc: string;

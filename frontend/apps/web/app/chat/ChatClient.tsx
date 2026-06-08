@@ -532,10 +532,7 @@ export function ChatClient() {
         } else {
           streamer.flush();
           const diagnostic = e instanceof Error ? e.message : String(e);
-          const detail = (
-            'PetroBrain could not complete the response. No operational action was '
-            + 'taken. Retry the request, or contact your administrator if the issue persists.'
-          );
+          const detail = 'We had trouble completing that response. Please try again - your work is safe.';
           void reportError({
             baseUrl: apiBaseUrl,
             token,

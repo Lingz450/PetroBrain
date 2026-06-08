@@ -43,14 +43,67 @@ export class ResearchApiError extends Error {
   }
 }
 
+/**
+ * Coerce a research record into a render-safe shape. The UI maps over
+ * `plan`/`sources` directly, so a record that arrives without those arrays
+ * (older rows, a partial stream payload) must never reach the components or it
+ * white-screens. Guarantee the array fields here, at the boundary.
+ */
+export function normalizeResearchRun(raw: unknown): ResearchRun {
+  const run = (raw ?? {}) as Partial<ResearchRun>;
+  return {
+    ...(run as ResearchRun),
+    plan: Array.isArray(run.plan) ? run.plan : [],
+    sources: Array.isArray(run.sources) ? run.sources : [],
+    report: run.report ? normalizeReport(run.report) : null,
+    evidence_pack: normalizeEvidencePack(run.evidence_pack),
+  };
+}
+
+function normalizeReport(report: ResearchRun['report']): NonNullable<ResearchRun['report']> {
+  if (!report) throw new Error('normalizeReport called with null');
+  return {
+    ...report,
+    confidence: report.confidence ?? { label: 'unknown', reason: '' },
+    checked: Array.isArray(report.checked) ? report.checked : [],
+    not_verified: Array.isArray(report.not_verified) ? report.not_verified : [],
+    contradictions: Array.isArray(report.contradictions) ? report.contradictions : [],
+    warnings: Array.isArray(report.warnings) ? report.warnings : [],
+    key_findings: Array.isArray(report.key_findings) ? report.key_findings : [],
+    assumptions: Array.isArray(report.assumptions) ? report.assumptions : [],
+    next_actions: Array.isArray(report.next_actions) ? report.next_actions : [],
+    outdated_sources: Array.isArray(report.outdated_sources) ? report.outdated_sources : [],
+    sections: Array.isArray(report.sections) ? report.sections : [],
+  };
+}
+
+function normalizeEvidencePack(
+  raw: unknown,
+): ResearchRun['evidence_pack'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const ep = raw as Record<string, unknown>;
+  type EP = NonNullable<ResearchRun['evidence_pack']>;
+  return {
+    confidence: (ep['confidence'] as EP['confidence']) ?? { label: 'unknown', reason: '' },
+    checked: Array.isArray(ep['checked']) ? (ep['checked'] as string[]) : [],
+    not_verified: Array.isArray(ep['not_verified']) ? (ep['not_verified'] as string[]) : [],
+    sources: Array.isArray(ep['sources']) ? (ep['sources'] as EP['sources']) : [],
+    calculations: Array.isArray(ep['calculations']) ? (ep['calculations'] as EP['calculations']) : [],
+    safety: (ep['safety'] as EP['safety']) ?? { requires_human_verification: false, message: '' },
+    advisory: ep['advisory'] as EP['advisory'],
+  };
+}
+
 export async function createResearchPlan(
   context: RequestContext,
   input: CreateResearchInput,
 ): Promise<ResearchRun> {
-  return json<ResearchRun>(
-    await fetch(
-      new URL('/research/plan', context.baseUrl),
-      init(context, { method: 'POST', body: JSON.stringify(input) }),
+  return normalizeResearchRun(
+    await json<ResearchRun>(
+      await fetch(
+        new URL('/research/plan', context.baseUrl),
+        init(context, { method: 'POST', body: JSON.stringify(input) }),
+      ),
     ),
   );
 }
@@ -60,13 +113,15 @@ export async function approveResearchPlan(
   researchId: string,
   plan: ResearchPlanStep[],
 ): Promise<ResearchRun> {
-  return json<ResearchRun>(
-    await fetch(
-      new URL(`/research/${researchId}/approve-plan`, context.baseUrl),
-      init(context, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'approve', plan }),
-      }),
+  return normalizeResearchRun(
+    await json<ResearchRun>(
+      await fetch(
+        new URL(`/research/${researchId}/approve-plan`, context.baseUrl),
+        init(context, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'approve', plan }),
+        }),
+      ),
     ),
   );
 }
@@ -75,17 +130,19 @@ export async function listResearch(context: RequestContext): Promise<ResearchRun
   const body = await json<{ research: ResearchRun[] }>(
     await fetch(new URL('/research', context.baseUrl), init(context)),
   );
-  return body.research;
+  return (body.research ?? []).map(normalizeResearchRun);
 }
 
 export async function getResearch(
   context: RequestContext,
   researchId: string,
 ): Promise<ResearchRun> {
-  return json<ResearchRun>(
-    await fetch(
-      new URL(`/research/${researchId}`, context.baseUrl),
-      init(context),
+  return normalizeResearchRun(
+    await json<ResearchRun>(
+      await fetch(
+        new URL(`/research/${researchId}`, context.baseUrl),
+        init(context),
+      ),
     ),
   );
 }
@@ -94,10 +151,12 @@ export async function stopResearch(
   context: RequestContext,
   researchId: string,
 ): Promise<ResearchRun> {
-  return json<ResearchRun>(
-    await fetch(
-      new URL(`/research/${researchId}/stop`, context.baseUrl),
-      init(context, { method: 'POST' }),
+  return normalizeResearchRun(
+    await json<ResearchRun>(
+      await fetch(
+        new URL(`/research/${researchId}/stop`, context.baseUrl),
+        init(context, { method: 'POST' }),
+      ),
     ),
   );
 }

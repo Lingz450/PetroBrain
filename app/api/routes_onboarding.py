@@ -647,7 +647,7 @@ def _workspace_defaults(
 
 def _recommended_destination(answers: dict[str, Any], account_type: str) -> str:
     if account_type == "company":
-        return "/admin/company"
+        return "/chat"
     text = " ".join(answers.get("focus_areas", []) + answers.get("use_cases", [])).lower()
     if "emission" in text or "mrv" in text or "ghg" in text:
         return "/emissions"

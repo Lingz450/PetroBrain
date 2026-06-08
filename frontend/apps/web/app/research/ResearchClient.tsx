@@ -21,6 +21,7 @@ import {
   exportResearch,
   getResearch,
   listResearch,
+  normalizeResearchRun,
   stopResearch,
   streamResearch,
   type CreateResearchInput,
@@ -235,7 +236,7 @@ export function ResearchClient() {
         (event) => {
           setEvents((current) => [...current, event]);
           if (event.event === 'completed' && isResearchRun(event.data['record'])) {
-            const record = event.data['record'];
+            const record = normalizeResearchRun(event.data['record']);
             setActive(record);
             replaceHistory(record);
           }
@@ -432,6 +433,7 @@ function ResearchBrief({
         <div className="grid grid-cols-2 gap-2">
           <Field label="Jurisdiction">
             <input
+              title="Jurisdiction"
               value={draft.jurisdiction}
               onChange={(event) => setDraft((current) => ({ ...current, jurisdiction: event.target.value }))}
               className={inputClass}
@@ -582,11 +584,13 @@ function PlanPanel({
               {editable ? (
                 <>
                   <input
+                    title="Step title"
                     value={step.title}
                     onChange={(event) => onUpdateStep(index, { title: event.target.value })}
                     className={`${inputClass} font-semibold`}
                   />
                   <textarea
+                    title="Step question"
                     rows={2}
                     value={step.question}
                     onChange={(event) => onUpdateStep(index, { question: event.target.value })}
@@ -700,14 +704,16 @@ function SourcePanel({ sources, events }: { sources: ResearchSource[]; events: R
 }
 
 function VerificationPanel({ record }: { record: ResearchRun }) {
-  const report = record.report!;
+  const report = record.report;
+  if (!report) return null;
+  const confidence = report.confidence ?? { label: 'unknown', reason: '' };
   return (
     <Panel title="Verification">
-      <Metric label="Confidence" value={report.confidence.label} detail={report.confidence.reason} />
-      <ListSection title="What was checked" items={report.checked} />
-      <ListSection title="Could not verify" items={report.not_verified} />
-      <ListSection title="Contradictions" items={report.contradictions} empty="No potential contradiction was detected automatically." />
-      <ListSection title="Warnings" items={report.warnings} />
+      <Metric label="Confidence" value={confidence.label} detail={confidence.reason} />
+      <ListSection title="What was checked" items={report.checked ?? []} />
+      <ListSection title="Could not verify" items={report.not_verified ?? []} />
+      <ListSection title="Contradictions" items={report.contradictions ?? []} empty="No potential contradiction was detected automatically." />
+      <ListSection title="Warnings" items={report.warnings ?? []} />
     </Panel>
   );
 }
@@ -836,6 +842,7 @@ function NumberField({
   return (
     <Field label={label}>
       <input
+        title={label}
         type="number"
         value={value}
         min={min}

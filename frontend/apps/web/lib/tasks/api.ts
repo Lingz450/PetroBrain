@@ -1,4 +1,4 @@
-import type { PetroTask, TaskCreateInput, TaskListResponse } from './types';
+import type { PetroTask, TaskCreateInput, TaskListResponse, TaskUpdateInput } from './types';
 
 interface Auth {
   baseUrl: string;
@@ -33,4 +33,12 @@ export function createTask(auth: Auth, input: TaskCreateInput) {
 
 export function taskAction(auth: Auth, taskId: string, action: 'complete' | 'pause' | 'resume') {
   return request<PetroTask>(auth, `/tasks/${taskId}/${action}`, { method: 'POST' });
+}
+
+export function updateTask(auth: Auth, taskId: string, input: TaskUpdateInput) {
+  return request<PetroTask>(auth, `/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export function deleteTask(auth: Auth, taskId: string) {
+  return request<void>(auth, `/tasks/${taskId}`, { method: 'DELETE' });
 }

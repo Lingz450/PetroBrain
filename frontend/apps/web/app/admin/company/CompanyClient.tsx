@@ -30,7 +30,7 @@ export function CompanyClient() {
   return (
     <main className="min-h-screen bg-neutral-50 px-4 py-8 dark:bg-neutral-950">
       <div className="mx-auto max-w-5xl">
-        <BackLink href="/admin" label="Admin dashboard" />
+        <BackLink href="/chat" label="Back to Workspace" />
         <header className="mt-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-primary-600">Company workspace</p>

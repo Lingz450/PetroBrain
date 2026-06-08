@@ -33,3 +33,13 @@ export interface TaskCreateInput {
   safety_critical: boolean;
   reminder_channels: string[];
 }
+
+export interface TaskUpdateInput {
+  title?: string;
+  description?: string;
+  category?: string;
+  priority?: PetroTask['priority'];
+  recurrence_type?: string;
+  assigned_to_team?: string;
+  due_date?: string;
+}
