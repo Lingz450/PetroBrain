@@ -90,7 +90,7 @@ function normalizeEvidencePack(
     sources: Array.isArray(ep['sources']) ? (ep['sources'] as EP['sources']) : [],
     calculations: Array.isArray(ep['calculations']) ? (ep['calculations'] as EP['calculations']) : [],
     safety: (ep['safety'] as EP['safety']) ?? { requires_human_verification: false, message: '' },
-    advisory: ep['advisory'] as EP['advisory'],
+    ...(ep['advisory'] ? { advisory: ep['advisory'] as NonNullable<EP['advisory']> } : {}),
   };
 }
 
