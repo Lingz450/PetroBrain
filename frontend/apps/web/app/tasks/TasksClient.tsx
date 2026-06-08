@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
+import type { Route } from 'next';
 
 import { BackLink, Logo } from '@petrobrain/ui';
 import { AuthGate } from '../chat/components/AuthGate';
@@ -82,7 +84,9 @@ export function TasksClient() {
       <header className="border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <BackLink href="/chat" label="Back to Chat" />
+            <Link href={'/chat' as Route} legacyBehavior passHref>
+              <BackLink label="Back to Chat" />
+            </Link>
             <div className="hidden sm:block h-5 w-px bg-neutral-200 dark:bg-neutral-700" />
             <div>
               <h1 className="text-lg font-semibold sm:text-xl">Tasks</h1>

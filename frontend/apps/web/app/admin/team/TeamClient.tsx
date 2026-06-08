@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import type { Route } from 'next';
 
 import type { Role } from '@petrobrain/types';
 import { BackLink, Input, Select } from '@petrobrain/ui';
@@ -170,7 +172,9 @@ export function TeamClient() {
   return (
     <main className="min-h-screen bg-neutral-50 px-4 py-8 dark:bg-neutral-950">
       <div className="mx-auto max-w-6xl">
-        <BackLink href="/admin/company" label="Company settings" />
+        <Link href={'/admin/company' as Route} legacyBehavior passHref>
+          <BackLink label="Company settings" />
+        </Link>
         <header className="mt-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-primary-600">Company administration</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Team and access</h1>
